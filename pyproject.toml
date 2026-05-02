@@ -54,10 +54,10 @@ chunk-tune = "chunktuner.cli:app"
 chunk-tune-mcp = "chunktuner.mcp.server:run"
 
 [project.urls]
-Homepage = "https://github.com/shantanudeshmukh/chunktuner"
-Repository = "https://github.com/shantanudeshmukh/chunktuner"
-Issues = "https://github.com/shantanudeshmukh/chunktuner/issues"
-Changelog = "https://github.com/shantanudeshmukh/chunktuner/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/shantanu-deshmukh/chunktuner"
+Repository = "https://github.com/shantanu-deshmukh/chunktuner"
+Issues = "https://github.com/shantanu-deshmukh/chunktuner/issues"
+Changelog = "https://github.com/shantanu-deshmukh/chunktuner/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

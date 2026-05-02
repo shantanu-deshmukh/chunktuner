@@ -1,9 +1,9 @@
 site_name: chunktuner
-site_url: https://shantanu-deshmukh.github.io/chunk-tuner/
+site_url: https://shantanu-deshmukh.github.io/chunktuner/
 site_description: Auto chunking tuner and MCP server for RAG pipelines
 site_author: Shantanu Deshmukh
-repo_url: https://github.com/shantanu-deshmukh/chunk-tuner
-repo_name: shantanu-deshmukh/chunk-tuner
+repo_url: https://github.com/shantanu-deshmukh/chunktuner
+repo_name: shantanu-deshmukh/chunktuner
 edit_uri: edit/main/docs/
 
 extra_css:

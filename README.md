@@ -3,8 +3,8 @@
 [![PyPI version](https://img.shields.io/pypi/v/chunktuner.svg)](https://pypi.org/project/chunktuner/)
 [![Python versions](https://img.shields.io/pypi/pyversions/chunktuner.svg)](https://pypi.org/project/chunktuner/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://github.com/shantanudeshmukh/chunktuner/actions/workflows/ci.yml/badge.svg)](https://github.com/shantanudeshmukh/chunktuner/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://shantanu-deshmukh.github.io/chunk-tuner/)
+[![CI](https://github.com/shantanu-deshmukh/chunktuner/actions/workflows/ci.yml/badge.svg)](https://github.com/shantanu-deshmukh/chunktuner/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://shantanu-deshmukh.github.io/chunktuner/)
 
 Auto chunking tuner and MCP server for RAG pipelines.
 

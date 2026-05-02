@@ -3,7 +3,7 @@
 ## Dev setup
 
 ```bash
-git clone https://github.com/shantanudeshmukh/chunktuner.git
+git clone https://github.com/shantanu-deshmukh/chunktuner.git
 cd chunktuner
 uv sync --all-extras --dev
 uv run pytest
