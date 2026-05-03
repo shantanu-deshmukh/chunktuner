@@ -360,6 +360,12 @@ class Evaluator:
             sample = random.Random(42).sample(chunks, k)
         for c in sample:
             d = docs_by_id[c.document_id]
+            n = len(d.content)
+            if not (0 <= c.start_offset < c.end_offset <= n):
+                raise ValueError(
+                    f"Chunk {c.id!r} offsets [{c.start_offset}:{c.end_offset}] are out of bounds "
+                    f"for doc {d.id!r} (length {n})"
+                )
             got = d.content[c.start_offset : c.end_offset]
             if got != c.text:
                 raise ValueError(

@@ -9,7 +9,8 @@ import pytest
 from chunktuner.chunking.bootstrap import build_full_registry
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy
 from chunktuner.chunking.recursive_character import RecursiveCharacterStrategy
-from chunktuner.models import ChunkConfig, Document
+from chunktuner.chunking.validation import validate_chunk_offsets
+from chunktuner.models import Chunk, ChunkConfig, Document
 
 REGISTRY = build_full_registry()
 
@@ -35,6 +36,18 @@ def _strategy(name: str):
     if name not in REGISTRY.names():
         pytest.skip(f"strategy {name!r} not registered (optional extra missing)")
     return REGISTRY.get(name)
+
+
+def test_validate_chunk_offsets_rejects_out_of_bounds() -> None:
+    doc = Document(id="d", content="short", content_type="text")
+    bad_chunk = Chunk(id="c", document_id="d", text="short", start_offset=0, end_offset=9999)
+    with pytest.raises(ValueError, match="out of bounds"):
+        validate_chunk_offsets(doc, [bad_chunk])
+
+
+def test_validate_chunk_offsets_empty_doc() -> None:
+    doc = Document(id="d", content="", content_type="text")
+    validate_chunk_offsets(doc, [])
 
 
 @pytest.mark.parametrize(

@@ -22,7 +22,13 @@ def validate_chunk_offsets(doc: Document, chunks: list[Chunk]) -> None:
     """Raise ValueError if any chunk's text doesn't match its offsets in doc.content."""
     if _SKIP or not chunks:
         return
+    n = len(doc.content)
     for c in chunks:
+        if not (0 <= c.start_offset < c.end_offset <= n):
+            raise ValueError(
+                f"Chunk {c.id!r} offsets [{c.start_offset}:{c.end_offset}] are out of bounds "
+                f"for doc {doc.id!r} (length {n})"
+            )
         got = doc.content[c.start_offset : c.end_offset]
         if got != c.text:
             raise ValueError(
