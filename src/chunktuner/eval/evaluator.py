@@ -29,10 +29,31 @@ _EPS: float = 1e-9  # zero-division guard for cosine similarity normalization
 
 
 def _token_bounds(encoding: tiktoken.Encoding, text: str) -> list[int]:
+    """Map token positions to char offsets using byte-level alignment.
+
+    Builds a byte-offset→char-offset table for the full text, then looks up
+    each token's byte width via decode_single_token_bytes(). This is correct
+    even when token boundaries fall mid-codepoint.
+    """
     ids = encoding.encode(text)
-    bounds = [0]
+    if not ids:
+        return [0]
+    text_utf8 = text.encode("utf-8")
+    # byte_to_char[b] = index of the str character owning UTF-8 byte b; last = len(text)
+    byte_to_char: list[int] = [0] * (len(text_utf8) + 1)
+    byte_idx = 0
+    for char_idx, ch in enumerate(text):
+        ch_len = len(ch.encode("utf-8"))
+        for k in range(ch_len):
+            byte_to_char[byte_idx + k] = char_idx
+        byte_idx += ch_len
+    byte_to_char[byte_idx] = len(text)  # sentinel
+
+    byte_offset = 0
+    bounds: list[int] = [0]
     for tid in ids:
-        bounds.append(bounds[-1] + len(encoding.decode([tid])))
+        byte_offset += len(encoding.decode_single_token_bytes(tid))
+        bounds.append(byte_to_char[min(byte_offset, len(text_utf8))])
     return bounds
 
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import tiktoken
+
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy
 from chunktuner.eval.embeddings import DummyEmbeddingFunction
-from chunktuner.eval.evaluator import Evaluator
+from chunktuner.eval.evaluator import Evaluator, _token_bounds
 from chunktuner.models import ChunkConfig, Document, EvalDataset, EvalQuery
 
 
@@ -38,3 +40,19 @@ def test_duplication_ratio_low_for_non_overlapping_windows() -> None:
     evaluator = Evaluator(DummyEmbeddingFunction(), top_k=3)
     result = evaluator.evaluate(strategy, config, [doc], dataset)
     assert result.metrics.duplication_ratio <= 0.05
+
+
+def test_token_bounds_cjk() -> None:
+    enc = tiktoken.get_encoding("cl100k_base")
+    text = "你好world"  # 2 CJK + 5 ASCII
+    bounds = _token_bounds(enc, text)
+    assert bounds[0] == 0
+    assert bounds[-1] == len(text)
+    assert all(0 <= b <= len(text) for b in bounds)
+
+
+def test_token_bounds_emoji() -> None:
+    enc = tiktoken.get_encoding("cl100k_base")
+    text = "Hello 🌍!"
+    bounds = _token_bounds(enc, text)
+    assert bounds[-1] == len(text)
