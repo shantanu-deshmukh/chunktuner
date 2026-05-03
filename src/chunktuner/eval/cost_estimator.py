@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from chunktuner.config import THROUGHPUT_API_TOKENS_PER_MIN
 from chunktuner.models import CostEstimate, Document
+
+logger = logging.getLogger(__name__)
 
 
 class CostEstimator:
@@ -27,6 +31,10 @@ class CostEstimator:
             n_configs = len(strategies)
 
         est_chunks_total = len(docs) * avg_chunks_per_doc * n_configs
+        # Heuristic: avg chunk ≈ 64 tokens (covers fixed_tokens/recursive defaults 256–1024 ÷ ~6
+        # chunks), plus 32 tokens per query embedding per doc per config (2 queries/doc × 16
+        # tok/question avg). These are conservative over-estimates; the max() floor below guards
+        # under-estimation.
         embed_tokens = int(est_chunks_total * 64) + int(len(docs) * 32 * n_configs)
         embed_tokens = max(embed_tokens, doc_tokens * n_configs // 4)
 
@@ -54,6 +62,10 @@ def _sum_doc_tokens(docs: list[Document]) -> int:
         enc = tiktoken.get_encoding("cl100k_base")
         return sum(len(enc.encode(d.content)) for d in docs)
     except Exception:
+        logger.warning(
+            "tiktoken unavailable; using character-count / 4 token estimate "
+            "(highly inaccurate for CJK or dense code)."
+        )
         return sum(max(1, len(d.content) // 4) for d in docs)
 
 

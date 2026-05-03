@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from chunktuner.mcp.service import (
+    DEFAULT_MAX_PREVIEW_CHARS,
     evaluate_chunking_impl,
     list_strategies_impl,
     preview_chunks_impl,
@@ -18,7 +19,7 @@ router = APIRouter()
 
 
 class PreviewChunksBody(BaseModel):
-    text: str
+    text: str = Field(..., max_length=DEFAULT_MAX_PREVIEW_CHARS)
     strategy_name: str
     config: dict[str, Any] = Field(default_factory=dict)
 
@@ -31,6 +32,16 @@ class EvaluateBody(BaseModel):
     max_docs: int = 20
     top_k: int = 5
     dry_run: bool = False
+    embedding_model: str | None = None
+
+
+class RecommendConfigBody(BaseModel):
+    path: str
+    use_case: str = "rag_qa"
+    content_type: str | None = None
+    strategies: list[str] | None = None
+    max_docs: int = 20
+    top_k: int = 5
     embedding_model: str | None = None
 
 
@@ -70,7 +81,7 @@ def evaluate_chunking(body: EvaluateBody) -> dict:
 
 
 @router.post("/recommend_config")
-def recommend_config(body: EvaluateBody) -> dict:
+def recommend_config(body: RecommendConfigBody) -> dict:
     try:
         return recommend_config_impl(
             body.path,

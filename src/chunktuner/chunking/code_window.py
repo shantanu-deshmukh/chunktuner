@@ -66,8 +66,8 @@ class CodeWindowStrategy:
 
     def param_schema(self) -> dict[str, Any]:
         return {
-            "max_tokens": {"type": "integer"},
-            "overlap_lines": {"type": "integer"},
+            "max_tokens": {"type": "integer", "minimum": 16},
+            "overlap_lines": {"type": "integer", "minimum": 0},
         }
 
     def default_param_grid(self) -> list[dict]:

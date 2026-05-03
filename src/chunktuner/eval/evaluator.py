@@ -176,6 +176,12 @@ class Evaluator:
         for q in dataset.queries:
             doc = docs_by_id.get(q.document_id)
             if doc is None:
+                logger.warning(
+                    "Query %r references document_id=%r which is not in the ingested corpus. "
+                    "Skipping. Check that document IDs in the eval dataset match ingested doc IDs.",
+                    q.id,
+                    q.document_id,
+                )
                 continue
             bounds = _token_bounds(self._enc, doc.content)
             gold: set[int] = set()

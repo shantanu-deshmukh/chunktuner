@@ -7,6 +7,7 @@ from typing import cast
 
 import typer
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from chunktuner.chunking import default_registry
@@ -60,19 +61,27 @@ def register(app: typer.Typer) -> None:
         scorer = ScoreCalculator(cast(UseCase, use_case))
         ev = Evaluator(embed, top_k=top_k or ws.top_k)
         rows = []
-        for n in names:
-            strat = default_registry.get(n)
-            cfg = ChunkConfig(name=n, params=strat.default_param_grid()[0])
-            res = ev.evaluate(strat, cfg, docs, ds, scorer=scorer)
-            rows.append(
-                {
-                    "strategy": n,
-                    "score": round(res.score, 4),
-                    "token_recall": round(res.metrics.token_recall, 4),
-                    "mrr": round(res.metrics.mrr, 4),
-                    "params": str(cfg.params),
-                }
-            )
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            transient=True,
+        ) as progress:
+            tid = progress.add_task("Comparing...", total=len(names))
+            for n in names:
+                progress.update(tid, description=f"Comparing {n}...")
+                strat = default_registry.get(n)
+                cfg = ChunkConfig(name=n, params=strat.default_param_grid()[0])
+                res = ev.evaluate(strat, cfg, docs, ds, scorer=scorer)
+                rows.append(
+                    {
+                        "strategy": n,
+                        "score": round(res.score, 4),
+                        "token_recall": round(res.metrics.token_recall, 4),
+                        "mrr": round(res.metrics.mrr, 4),
+                        "params": str(cfg.params),
+                    }
+                )
+                progress.advance(tid)
         table = Table(title="Strategy comparison")
         for key in rows[0].keys():
             table.add_column(key)

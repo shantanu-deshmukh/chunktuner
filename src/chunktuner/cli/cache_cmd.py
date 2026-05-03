@@ -18,15 +18,20 @@ def register(app: typer.Typer) -> None:
     @cache_app.command("stats")
     def cache_stats(
         config: Path | None = typer.Option(None, "--config"),
-        model: str = typer.Option("text-embedding-3-small", "--model"),
+        model: str | None = typer.Option(
+            None,
+            "--model",
+            help="Embedding model (default: from workspace config)",
+        ),
     ) -> None:
         ws = load_workspace_config(load_workspace_path(config))
+        effective_model = model or ws.embedding_model
         cache_dir = Path(ws.cache_dir).expanduser() if ws.cache_dir else default_cache_dir()
         db = default_embedding_db_path(cache_dir)
         if not db.is_file():
             typer.echo("No cache database on disk yet.")
             raise typer.Exit(0)
-        with EmbeddingCache(db, model) as emb, ChunkCache(db) as ch:
+        with EmbeddingCache(db, effective_model) as emb, ChunkCache(db) as ch:
             typer.echo(f"Database: {db}")
             typer.echo(f"Embeddings: {emb.stats()}")
             typer.echo(f"Chunks: {ch.stats()}")
@@ -34,13 +39,18 @@ def register(app: typer.Typer) -> None:
     @cache_app.command("clear")
     def cache_clear(
         config: Path | None = typer.Option(None, "--config"),
-        model: str = typer.Option("text-embedding-3-small", "--model"),
+        model: str | None = typer.Option(
+            None,
+            "--model",
+            help="Embedding model (default: from workspace config)",
+        ),
     ) -> None:
         ws = load_workspace_config(load_workspace_path(config))
+        effective_model = model or ws.embedding_model
         cache_dir = Path(ws.cache_dir).expanduser() if ws.cache_dir else default_cache_dir()
         db = default_embedding_db_path(cache_dir)
         if db.is_file():
-            with EmbeddingCache(db, model) as emb, ChunkCache(db) as ch:
+            with EmbeddingCache(db, effective_model) as emb, ChunkCache(db) as ch:
                 emb.clear()
                 ch.clear()
         typer.echo("Caches cleared.")

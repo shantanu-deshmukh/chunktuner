@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from chunktuner.chunking.registry import StrategyRegistry
@@ -16,6 +17,8 @@ from chunktuner.models import (
     Recommendation,
     UseCase,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _embed_task_fields(embedding_fn: object) -> dict:
@@ -157,9 +160,21 @@ class AutoTuner:
                     }
                 )
             with ProcessPoolExecutor(max_workers=max_workers) as pool:
-                futs = [pool.submit(mp_evaluate_task, t) for t in tasks]
-                for fut in as_completed(futs):
-                    results.append(EvalResult.model_validate(fut.result()))
+                fut_to_task: dict = {}
+                for t in tasks:
+                    fut = pool.submit(mp_evaluate_task, t)
+                    fut_to_task[fut] = t
+                for fut in as_completed(fut_to_task):
+                    try:
+                        results.append(EvalResult.model_validate(fut.result()))
+                    except Exception as exc:
+                        t = fut_to_task[fut]
+                        logger.error(
+                            "Parallel eval failed for strategy=%r params=%r: %s",
+                            t["strategy_name"],
+                            t["config"],
+                            exc,
+                        )
         else:
             for name, params in jobs:
                 strat = self.strategies.get(name)

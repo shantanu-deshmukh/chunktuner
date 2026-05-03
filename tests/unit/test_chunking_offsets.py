@@ -166,3 +166,12 @@ def test_offset_invariant_optional_strategies(
         assert doc.content[c.start_offset : c.end_offset] == c.text, (
             f"[{strategy_name}] offset mismatch for chunk {c.id}"
         )
+
+
+@pytest.mark.parametrize("strategy_name", ["fixed_tokens", "recursive_character", "late_chunking"])
+def test_empty_document_returns_no_chunks(strategy_name: str) -> None:
+    strategy = _strategy(strategy_name)
+    doc = Document(id="empty", content="", content_type="text")
+    cfg = ChunkConfig(name=strategy_name, params={})
+    chunks = strategy.chunk(doc, cfg)
+    assert chunks == [], f"{strategy_name} must return [] for empty content"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, cast
 
 from chunktuner.api.security import require_under_base
@@ -14,6 +15,28 @@ from chunktuner.eval.trivial_dataset import trivial_dataset_for_docs
 from chunktuner.ingestion.file_ingestor import FileIngestor
 from chunktuner.models import ChunkConfig, Document, UseCase
 from chunktuner.tuner.auto_tuner import AutoTuner
+
+DEFAULT_MAX_PREVIEW_CHARS = 500_000
+
+
+def max_preview_chars() -> int:
+    raw = os.environ.get("CHUNKTUNER_MAX_PREVIEW_CHARS")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_MAX_PREVIEW_CHARS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_MAX_PREVIEW_CHARS
+
+
+def _validate_strategies(names: list[str]) -> None:
+    reg = build_full_registry()
+    available = set(reg.names())
+    invalid = [n for n in names if n not in available]
+    if invalid:
+        raise ValueError(
+            f"Unknown strategy name(s): {invalid}. Available: {sorted(available)}"
+        )
 
 
 def list_strategies_impl(content_type: str | None = None) -> list[dict]:
@@ -32,6 +55,12 @@ def list_strategies_impl(content_type: str | None = None) -> list[dict]:
 
 
 def preview_chunks_impl(text: str, strategy_name: str, config: dict[str, Any]) -> list[dict]:
+    lim = max_preview_chars()
+    if len(text) > lim:
+        raise ValueError(
+            f"preview_chunks text length {len(text)} exceeds limit of {lim} chars. "
+            "Trim your input or use evaluate_chunking with a file path."
+        )
     reg = build_full_registry()
     strat = reg.get(strategy_name)
     doc = Document(id="preview", content=text, content_type="markdown")
@@ -63,6 +92,8 @@ def evaluate_chunking_impl(
     p = require_under_base(path)
     if not p.exists():
         raise ValueError("path does not exist")
+    if strategies is not None:
+        _validate_strategies(strategies)
     names = strategies or ["fixed_tokens", "recursive_character"]
     if dry_run:
         fi = FileIngestor(root=p.parent if p.is_file() else p)
@@ -110,6 +141,8 @@ def recommend_config_impl(
     p = require_under_base(path)
     if not p.exists():
         raise ValueError("path does not exist")
+    if strategies is not None:
+        _validate_strategies(strategies)
     embed = (
         LiteLLMEmbeddingFunction(embedding_model) if embedding_model else DummyEmbeddingFunction()
     )
@@ -122,10 +155,11 @@ def recommend_config_impl(
         Evaluator(embed, top_k=top_k),
         ScoreCalculator(uc),
     )
+    strat_names = strategies or ["fixed_tokens", "recursive_character"]
     rec = tuner.recommend(
         docs,
         uc,
-        strategies=strategies or ["fixed_tokens", "recursive_character"],
+        strategies=strat_names,
         max_docs=max_docs,
         baseline=True,
         content_type=content_type,

@@ -6,12 +6,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+import typer
 import yaml
 from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
 console = Console()
+
+_VALID_FORMATS = frozenset({"json", "yaml", "table"})
 
 
 def load_workspace_path(config: Path | None) -> Path | None:
@@ -22,6 +25,11 @@ def load_workspace_path(config: Path | None) -> Path | None:
 
 
 def emit_output(data: Any, fmt: str) -> None:
+    if fmt not in _VALID_FORMATS:
+        raise typer.BadParameter(
+            f"Unknown output format {fmt!r}. Valid choices: {sorted(_VALID_FORMATS)}",
+            param_hint="'--output-format'",
+        )
     if isinstance(data, BaseModel):
         payload = data.model_dump(mode="json")
     elif isinstance(data, list) and data and isinstance(data[0], BaseModel):

@@ -39,8 +39,8 @@ class LateChunkingStrategy:
 
     def param_schema(self) -> dict[str, Any]:
         return {
-            "chunk_size_tokens": {"type": "integer"},
-            "overlap_tokens": {"type": "integer"},
+            "chunk_size_tokens": {"type": "integer", "minimum": 16},
+            "overlap_tokens": {"type": "integer", "minimum": 0},
             "model": {"type": "string"},
         }
 

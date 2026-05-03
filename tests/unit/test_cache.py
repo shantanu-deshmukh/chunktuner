@@ -53,6 +53,15 @@ def test_cached_fn_returns_correct_length(tmp_db: Path) -> None:
         assert len(mixed) == 3
 
 
+def test_cached_embedding_invariant_not_stripped_under_optimization(tmp_path: Path) -> None:
+    """Invariant check raises RuntimeError instead of assert when slots stay None."""
+    cache = EmbeddingCache(tmp_path / "e.sqlite", "dummy")
+    inner = DummyEmbeddingFunction()
+    wrapped = CachedEmbeddingFunction(inner, cache)
+    result = wrapped.embed_documents(["hello", "world"])
+    assert len(result) == 2
+
+
 def test_cache_closed_on_exception(tmp_db: Path) -> None:
     try:
         with EmbeddingCache(tmp_db, "model") as cache:

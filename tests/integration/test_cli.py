@@ -54,3 +54,30 @@ def test_recommend_json_output(corpus: Path) -> None:
         ["recommend", str(corpus), "--output-format", "json", "--no-baseline"],
     )
     assert result.exit_code == 0
+
+
+def test_cache_stats_no_db(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["cache", "stats", "--config", str(tmp_path / "missing.yaml")],
+    )
+    assert result.exit_code == 0
+    assert "No cache database" in result.output
+
+
+def test_cache_clear_idempotent(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["cache", "clear", "--config", str(tmp_path / "missing.yaml")],
+    )
+    assert result.exit_code == 0
+    assert "cleared" in result.output.lower()
+
+
+def test_recommend_rejects_unknown_output_format(corpus: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["recommend", str(corpus), "--output-format", "bogus", "--no-baseline"],
+    )
+    assert result.exit_code != 0
+    assert "Unknown output format" in result.output or "bogus" in result.output

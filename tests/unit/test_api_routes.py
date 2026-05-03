@@ -5,20 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from chunktuner.api.routes import router
+from chunktuner.api.app import create_app
 
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Path, Path]:
+    monkeypatch.delenv("CHUNK_TUNER_API_TOKEN", raising=False)
     monkeypatch.setenv("CHUNK_TUNER_BASE_DIR", str(tmp_path))
     corpus = tmp_path / "docs"
     corpus.mkdir()
     (corpus / "a.md").write_text("# Hello\n\nThis is a test document." * 20)
-    app = FastAPI()
-    app.include_router(router)
+    app = create_app()
     return TestClient(app), tmp_path, corpus
 
 
@@ -94,3 +93,18 @@ def test_recommend_config(client: tuple[TestClient, Path, Path]) -> None:
     )
     assert r.status_code == 200
     assert "best" in r.json()
+
+
+def test_api_token_auth_blocks_without_bearer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CHUNK_TUNER_BASE_DIR", str(tmp_path))
+    monkeypatch.setenv("CHUNK_TUNER_API_TOKEN", "secret-token")
+    app = create_app()
+    tc = TestClient(app)
+    r = tc.get("/list_strategies")
+    assert r.status_code == 401
+    r_ok = tc.get("/list_strategies", headers={"Authorization": "Bearer secret-token"})
+    assert r_ok.status_code == 200
+    r_health = tc.get("/health")
+    assert r_health.status_code == 200

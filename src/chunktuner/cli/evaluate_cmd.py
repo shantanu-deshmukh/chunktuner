@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 import typer
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from chunktuner.chunking import default_registry
 from chunktuner.cli.common import load_workspace_path
@@ -68,11 +69,20 @@ def register(app: typer.Typer) -> None:
         scorer = ScoreCalculator(cast(UseCase, use_case))
         ev = Evaluator(embed_fn, top_k=top_k or ws.top_k)
         results = []
-        for n in names:
-            strat = default_registry.get(n)
-            for params in strat.default_param_grid():
-                cfg = ChunkConfig(name=n, params=dict(params))
-                results.append(ev.evaluate(strat, cfg, docs, ds, scorer=scorer))
+        total_jobs = sum(len(default_registry.get(n).default_param_grid()) for n in names)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            transient=True,
+        ) as progress:
+            task_id = progress.add_task("Evaluating...", total=total_jobs)
+            for n in names:
+                strat = default_registry.get(n)
+                for params in strat.default_param_grid():
+                    progress.update(task_id, description=f"Evaluating {n} {params!r}...")
+                    cfg = ChunkConfig(name=n, params=dict(params))
+                    results.append(ev.evaluate(strat, cfg, docs, ds, scorer=scorer))
+                    progress.advance(task_id)
         if output_format == "json":
             typer.echo(__import__("json").dumps([r.model_dump() for r in results], indent=2))
         elif output_format == "yaml":

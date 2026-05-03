@@ -140,7 +140,7 @@ class AgenticStrategy:
     def param_schema(self) -> dict[str, Any]:
         return {
             "model": {"type": "string"},
-            "max_propositions": {"type": "integer"},
+            "max_propositions": {"type": "integer", "minimum": 1, "maximum": 200},
         }
 
     def default_param_grid(self) -> list[dict]:

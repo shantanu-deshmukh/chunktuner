@@ -102,7 +102,7 @@ class CodeASTStrategy:
 
     def param_schema(self) -> dict[str, Any]:
         return {
-            "max_tokens": {"type": "integer"},
+            "max_tokens": {"type": "integer", "minimum": 16},
             "merge_small": {"type": "boolean"},
         }
 

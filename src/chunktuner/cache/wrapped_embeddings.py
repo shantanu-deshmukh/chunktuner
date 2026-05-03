@@ -25,7 +25,13 @@ class CachedEmbeddingFunction:
             for i, vec in zip(missing_idx, fresh, strict=True):
                 self._cache.set(texts[i], vec)
                 results[i] = vec
-        assert all(v is not None for v in results), "BUG: unfilled cache slot after fetch"
+        if any(v is None for v in results):
+            missing = [i for i, v in enumerate(results) if v is None]
+            raise RuntimeError(
+                "Cache invariant violated: "
+                f"{len(missing)} embedding slot(s) still None after fetch "
+                f"(indices: {missing[:5]}). This is a bug in CachedEmbeddingFunction."
+            )
         return results  # type: ignore[return-value]
 
     def embed_query(self, text: str) -> list[float]:

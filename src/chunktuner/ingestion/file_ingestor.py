@@ -98,19 +98,20 @@ class FileIngestor:
             return self._ingest_docling(path, ct)
         return [self._ingest_plain(path, ct)]
 
-    def _read_text(self, path: Path) -> str:
+    def _read_text(self, path: Path) -> tuple[str, str]:
+        """Return ``(text, encoding_used)``."""
         try:
-            return path.read_text(encoding="utf-8")
+            return path.read_text(encoding="utf-8"), "utf-8"
         except UnicodeDecodeError:
             logger.warning(
                 "File %s is not valid UTF-8; retrying with latin-1. "
                 "Character offsets may differ from byte offsets.",
                 path,
             )
-            return path.read_text(encoding="latin-1")
+            return path.read_text(encoding="latin-1"), "latin-1"
 
     def _ingest_plain(self, path: Path, detected: str) -> Document:
-        raw = self._read_text(path)
+        raw, encoding = self._read_text(path)
         content = preprocess(raw, "html" if detected == "html" else detected)
         content_type: ContentType
         if detected == "text":
@@ -124,13 +125,16 @@ class FileIngestor:
         else:
             content_type = "markdown"
         lang = _EXT_LANG.get(path.suffix.lower())
+        meta: dict = {"filename": path.name}
+        if encoding != "utf-8":
+            meta["source_encoding"] = encoding
         return Document(
             id=str(uuid.uuid4()),
             content=content,
             content_type=content_type,
             path=str(path),
             language=lang,
-            metadata={"filename": path.name},
+            metadata=meta,
         )
 
     def _ingest_docling(self, path: Path, detected: str) -> list[Document]:

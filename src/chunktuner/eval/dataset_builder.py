@@ -106,10 +106,14 @@ class DatasetBuilder:
             for row in rows[:questions_per_doc]:
                 if not isinstance(row, dict):
                     continue
-                q = str(row.get("question", "")).strip()
-                a = int(row.get("start", row.get("start_offset", 0)))
-                b = int(row.get("end", row.get("end_offset", 0)))
-                ref = str(row.get("reference_answer", ""))
+                try:
+                    q = str(row.get("question", "")).strip()
+                    a = int(row.get("start", row.get("start_offset", 0)))
+                    b = int(row.get("end", row.get("end_offset", 0)))
+                    ref = str(row.get("reference_answer", ""))
+                except (TypeError, ValueError) as exc:
+                    logger.warning("Skipping malformed query row %r: %s", row, exc)
+                    continue
                 span_text = d.content[a:b] if 0 <= a < b <= len(d.content) else ""
                 if not q or not span_text:
                     continue
