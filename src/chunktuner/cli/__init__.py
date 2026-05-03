@@ -22,6 +22,7 @@ app = typer.Typer(
     help="Auto chunking tuner for RAG pipelines",
 )
 
+
 @app.callback(invoke_without_command=True)
 def _root_callback(ctx: typer.Context) -> None:
     """Show root help when no subcommand is given; optional interactive tip on stderr."""

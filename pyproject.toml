@@ -88,4 +88,5 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.15.12",
     "mcp[cli]>=1.7",
+    "pre-commit>=4.6.0",
 ]
