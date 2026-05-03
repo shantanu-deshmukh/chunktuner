@@ -11,7 +11,14 @@ def mp_evaluate_task(task: dict) -> dict:
     from chunktuner.models import ChunkConfig, Document, EvalDataset
 
     reg = build_full_registry(task.get("encoding", "cl100k_base"))
-    strat = reg.get(task["strategy_name"])
+    strategy_name = task["strategy_name"]
+    if strategy_name not in reg.names():
+        available = sorted(reg.names())
+        raise ValueError(
+            f"Strategy {strategy_name!r} is not available in this worker process "
+            f"(optional dependency may be missing). Available: {available}"
+        )
+    strat = reg.get(strategy_name)
     cfg = ChunkConfig.model_validate(task["config"])
     docs = [Document.model_validate(x) for x in task["docs"]]
     ds = EvalDataset.model_validate(task["dataset"])
