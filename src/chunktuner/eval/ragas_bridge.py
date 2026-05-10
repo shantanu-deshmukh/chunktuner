@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+# RAGAS 0.3.x uses OpenAI by default for LLM-as-judge. Other providers require
+# custom LangChain wrappers and manual ragas_bridge configuration.
+_RAGAS_LLM_ENV_VARS = ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY")
 
 _UNAVAILABLE: dict[str, float | None] = {
     "faithfulness": None,
@@ -17,6 +22,17 @@ class RagasBridge:
 
     def __init__(self, llm_client: object | None = None):
         self.llm_client = llm_client
+
+    @staticmethod
+    def is_configured() -> bool:
+        """Return True if an API key RAGAS/LiteLLM typically reads is set.
+
+        Includes ``CHUNKTUNER_API_KEY`` for the same OpenAI-compatible routing as the
+        rest of chunktuner. RAGAS still does not support local-only (LM Studio / Ollama)
+        judge flows without extra LangChain wiring — a key here means provider-style
+        auth, not ``api_base`` alone.
+        """
+        return any(os.environ.get(k) for k in _RAGAS_LLM_ENV_VARS)
 
     def compute(
         self,

@@ -28,7 +28,7 @@ pip install 'chunktuner[mcp]'
 
 - **`CHUNK_TUNER_BASE_DIR`**: every `path` argument to tools must resolve under this directory (security boundary).
 - **`CHUNKTUNER_API_BASE`** / **`CHUNKTUNER_API_KEY`**: optional OpenAI-compatible endpoint and key for LiteLLM when tools pass an `embedding_model` (LM Studio, Ollama, etc.). Do not put secrets in MCP tool arguments.
-- **`CHUNKTUNER_LLM_MODEL`**: default LiteLLM model id for LLM-backed paths in MCP evaluations (defaults to the library’s standard LLM default when unset).
+- **`CHUNKTUNER_LLM_MODEL`**: LiteLLM model id passed to the evaluator as `llm_answer_model` for MCP `evaluate_chunking` / `recommend_config` (dataset generation, agentic, generation metrics when enabled, etc.); defaults to `gpt-4o-mini` when unset (see `chunktuner.config.DEFAULT_LLM_MODEL`). It applies regardless of whether an `embedding_model` is passed to the tool.
 - **`CHUNKTUNER_CACHE_DIR`**: optional override for the SQLite cache directory when **you** use the cache layer (default: `~/.cache/chunktuner`; see `chunktuner.config.default_cache_dir`).
 - **Entry point**: `chunk-tune-mcp` → `chunktuner.mcp.server:run` (stdio JSON-RPC on stdout; **never** `print()` in MCP code).
 
@@ -55,7 +55,7 @@ uv run --extra mcp chunk-tune-mcp
 The FastAPI app under `chunktuner.api` is separate from MCP. Start it with:
 
 ```bash
-uv run uvicorn chunktuner.api.main:app --host 127.0.0.1 --port 8765
+uv run uvicorn chunktuner.api.app:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
 Use this when you want REST clients; MCP hosts talk to `chunk-tune-mcp` only.

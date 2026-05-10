@@ -681,7 +681,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0,<3" },
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.0" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
-    { name = "ragas", marker = "extra == 'ragas'", specifier = ">=0.1" },
+    { name = "ragas", marker = "extra == 'ragas'", specifier = ">=0.1.0,<1" },
     { name = "rich", specifier = ">=13.0,<14" },
     { name = "semchunk", marker = "extra == 'semantic'", specifier = ">=1.0" },
     { name = "tenacity", specifier = ">=8.0,<9" },

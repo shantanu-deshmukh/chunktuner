@@ -17,6 +17,38 @@ from chunktuner.models import Document, EvalDataset, EvalQuery
 
 logger = logging.getLogger(__name__)
 
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
+
+
+def _extract_json(text: str) -> object:
+    """Extract and parse the first JSON object/array from LLM output.
+
+    Handles thinking-model output (DeepSeek R1, QwQ), markdown fences, and leading
+    prose by trying every candidate { / [ position via raw_decode.
+    """
+    # Remove thinking tokens
+    text = _THINK_RE.sub("", text).strip()
+    # Extract content from markdown code fence if present
+    fence = _FENCE_RE.search(text)
+    if fence:
+        text = fence.group(1).strip()
+    # Try full text first (common when model returns clean JSON)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Scan for the first position that raw_decode can parse successfully
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch in "{[":
+            try:
+                obj, _ = decoder.raw_decode(text, i)
+                return obj
+            except json.JSONDecodeError:
+                continue
+    raise ValueError("no valid JSON found in response")
+
 
 def _token_f1(enc: tiktoken.Encoding, a: str, b: str) -> float:
     ta = enc.encode(a)
@@ -113,9 +145,23 @@ class DatasetBuilder:
                     **self._provider_kwargs(),
                 )
                 raw = resp.choices[0].message.content or "{}"
-                payload = json.loads(raw)
+            except Exception:
+                # Many local models don't support json_object — retry with text format
+                try:
+                    resp = litellm.completion(
+                        model=self.llm_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.2,
+                        **self._provider_kwargs(),
+                    )
+                    raw = resp.choices[0].message.content or "{}"
+                except Exception as exc:
+                    logger.warning("Dataset generation failed for doc %s: %s", d.id, exc)
+                    continue
+            try:
+                payload = _extract_json(raw)
             except Exception as exc:
-                logger.warning("Dataset generation failed for doc %s: %s", d.id, exc)
+                logger.warning("Dataset JSON parse failed for doc %s: %s", d.id, exc)
                 continue
             rows = payload.get("queries", payload) if isinstance(payload, dict) else payload
             if not isinstance(rows, list):

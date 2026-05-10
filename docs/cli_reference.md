@@ -49,8 +49,10 @@ sample_path: README.md
 content_type: markdown
 token_count: 412
 ...
-heuristic_starting_strategy: markdown_semantic (when available)
+heuristic_starting_strategy: recursive_character (~1600 chars)
 ```
+
+`heuristic_starting_strategy` is chosen from the sampled text: many Markdown headers → `markdown_semantic (when available)`; several fenced code blocks → `code_ast (when available)`; otherwise `recursive_character (~1600 chars)`.
 
 For directories, the first `.md` / `.txt` file under the tree is sampled.
 
@@ -85,7 +87,7 @@ Strategy-config combinations: ...
 
 ## `chunk-tune evaluate`
 
-Runs the evaluator for each strategy × default param grid. Uses **dummy embeddings** unless `--embedding-model` is set.
+Runs the evaluator for each strategy × default param grid. Uses **dummy embeddings** only when both `--embedding-model` is omitted **and** `embedding_model` in the workspace YAML (from `--config` or cwd `.autochunk.yaml`) is empty or unset; otherwise `LiteLLMEmbeddingFunction` is used and you are prompted unless `--yes`.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -96,7 +98,10 @@ Runs the evaluator for each strategy × default param grid. Uses **dummy embeddi
 | `--top-k` | int | `5` | Retrieval depth (or workspace default) |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
-| `--embedding-model` | string | none | LiteLLM model id; triggers paid calls |
+| `--embedding-model` | string | none | If set, overrides workspace `embedding_model`; a non-empty resolved model uses LiteLLM (prompts unless `--yes`) |
+| `--api-base` | string | none | OpenAI-compatible API base (overrides workspace / `CHUNKTUNER_API_BASE`) |
+| `--api-key` | string | none | API key for embeddings/LLM (overrides workspace / `CHUNKTUNER_API_KEY`) |
+| `--llm-model` | string | none | LiteLLM id for generation paths; default is workspace `llm_model` |
 | `--yes` | bool | false | Skip confirmation when using real embeddings |
 
 ```bash
@@ -112,7 +117,7 @@ fixed_tokens {'max_tokens': 256, ...} score=0.1234 recall=0.100 iou=0.050
 
 ## `chunk-tune recommend`
 
-Full **AutoTuner** grid over strategies and default (or filtered) param grids; prints best config.
+Full **AutoTuner** grid over strategies and default (or filtered) param grids; prints best config. Embedding resolution matches `evaluate`: **`--embedding-model` else workspace `embedding_model`**; dummy only when the resolved value is empty.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -123,7 +128,10 @@ Full **AutoTuner** grid over strategies and default (or filtered) param grids; p
 | `--top-k` | int | `5` | Evaluator top-k |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
-| `--embedding-model` | string | none | LiteLLM model id |
+| `--embedding-model` | string | none | Overrides workspace `embedding_model` (see `evaluate`) |
+| `--api-base` | string | none | Same as `evaluate` |
+| `--api-key` | string | none | Same as `evaluate` |
+| `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip paid-call confirmation |
 | `--no-baseline` | bool | false | Skip fixed-token baseline run |
 
@@ -135,7 +143,7 @@ chunk-tune recommend ./samples --no-baseline
 
 ## `chunk-tune compare`
 
-Side-by-side comparison using the **first** default param set per strategy. Rich table to stdout; optional Markdown report.
+Side-by-side comparison using the **first** default param set per strategy. Rich table to stdout; optional Markdown report. Embedding resolution matches `evaluate`.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -146,7 +154,10 @@ Side-by-side comparison using the **first** default param set per strategy. Rich
 | `--top-k` | int | `5` | Evaluator top-k |
 | `--config` | path | none | Workspace YAML |
 | `--report` | path | none | Write Markdown comparison table |
-| `--embedding-model` | string | none | LiteLLM model id |
+| `--embedding-model` | string | none | Overrides workspace `embedding_model` (see `evaluate`) |
+| `--api-base` | string | none | Same as `evaluate` |
+| `--api-key` | string | none | Same as `evaluate` |
+| `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip confirmation |
 
 ```bash
@@ -185,7 +196,7 @@ SQLite-backed embedding and chunk caches. Subcommands:
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--config` | path | none | Workspace YAML (for `cache_dir`) |
-| `--model` | string | `text-embedding-3-small` | Embedding model key for DB |
+| `--model` | string | *(unset)* | Embedding model key; defaults to workspace `embedding_model`, else `text-embedding-3-small` |
 
 ```bash
 chunk-tune cache stats

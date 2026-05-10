@@ -15,7 +15,7 @@ Optional: API keys for your embedding provider (e.g. `OPENAI_API_KEY`) when you 
 |------|---------|
 | Global CLI | `uv tool install chunktuner` |
 | Project dependency | `uv add chunktuner` |
-| One-off CLI (no install) | `uvx chunktuner chunk-tune --help` |
+| One-off CLI (no install) | `uvx --from chunktuner chunk-tune --help` |
 
 ### Optional extras
 
@@ -46,7 +46,7 @@ chunk-tune estimate ./my_docs --use-case rag_qa
 chunk-tune recommend ./my_docs --use-case rag_qa
 ```
 
-`estimate` is dry-run (no paid API calls). `recommend` uses **dummy embeddings** unless you pass `--embedding-model` and confirm with `--yes` — see [CLI reference](cli_reference.md).
+`estimate` is dry-run (no paid API calls). For `recommend` / `evaluate`, the embedding model is resolved as **`--embedding-model` if you pass it, otherwise `embedding_model` from `.autochunk.yaml`** (and `chunk-tune init` writes a default model there). LiteLLM runs only when that resolved value is non-empty; you are prompted unless you pass `--yes`. To force dummy embeddings with a post-init workspace, clear `embedding_model` in the YAML or pass a dedicated dummy-only config via `--config` — see [CLI reference](cli_reference.md) and [Configuration](configuration.md).
 
 ---
 

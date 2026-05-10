@@ -93,6 +93,16 @@ def _ndcg_at_k(rels: list[float], k: int) -> float:
 class Evaluator:
     """Chunks documents, embeds text, runs retrieval metrics (and optional RAGAS)."""
 
+    @staticmethod
+    def _ragas_available() -> bool:
+        try:
+            import ragas  # noqa: F401
+        except ImportError:
+            return False
+        from chunktuner.eval.ragas_bridge import RagasBridge
+
+        return RagasBridge.is_configured()
+
     def __init__(
         self,
         embedding_fn: EmbeddingFunction,
@@ -110,7 +120,23 @@ class Evaluator:
     ):
         self.embedding_fn = embedding_fn
         self.top_k = top_k
-        self.enable_generation_metrics = enable_generation_metrics
+        wants_generation = enable_generation_metrics
+        self.enable_generation_metrics = wants_generation and self._ragas_available()
+        if wants_generation and not self.enable_generation_metrics:
+            try:
+                import ragas  # noqa: F401
+            except ImportError:
+                logger.info(
+                    "Generation metrics disabled: RAGAS is not installed "
+                    "(e.g. uv add 'chunktuner[ragas]')."
+                )
+            else:
+                logger.info(
+                    "Generation metrics disabled: no API key found for RAGAS "
+                    "(set OPENAI_API_KEY, GEMINI_API_KEY, CHUNKTUNER_API_KEY, or another "
+                    "provider key RAGAS uses). Local OpenAI-compatible servers without a "
+                    "judge LLM key are skipped — use retrieval metrics only."
+                )
         self.llm_client = llm_client
         self._enc = tiktoken.get_encoding(encoding_name)
         self.context_budget_tokens = context_budget_tokens
@@ -162,10 +188,9 @@ class Evaluator:
 
         t0 = time.perf_counter()
         chunk_vecs = self._embed_batched([c.text for c in all_chunks])
-        q_vecs: dict[str, np.ndarray] = {}
-        for q in dataset.queries:
-            v = np.array(self.embedding_fn.embed_query(q.question), dtype=np.float64)
-            q_vecs[q.id] = v
+        q_texts = [q.question for q in dataset.queries]
+        q_vecs_arr = self._embed_batched(q_texts)
+        q_vecs: dict[str, np.ndarray] = {q.id: q_vecs_arr[i] for i, q in enumerate(dataset.queries)}
         latency_ms = (time.perf_counter() - t0) * 1000
 
         by_doc: dict[str, list[tuple[int, Chunk]]] = defaultdict(list)

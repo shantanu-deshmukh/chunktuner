@@ -6,6 +6,7 @@ import hashlib
 from typing import Any
 
 import numpy as np
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 _DIM = 256
 
@@ -62,6 +63,7 @@ class LiteLLMEmbeddingFunction:
             kw["api_key"] = self.api_key
         return kw
 
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=4, max=60))
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -69,6 +71,7 @@ class LiteLLMEmbeddingFunction:
         data = sorted(resp["data"], key=lambda d: d["index"])
         return [d["embedding"] for d in data]
 
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=4, max=60))
     def embed_query(self, text: str) -> list[float]:
         resp = self._litellm.embedding(model=self.model, input=[text], **self._provider_kwargs())
         return list(resp["data"][0]["embedding"])

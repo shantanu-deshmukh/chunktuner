@@ -4,7 +4,7 @@
 
 ### Does chunktuner send my documents to any server?
 
-Only if **you** configure a cloud embedding model (e.g. via `LiteLLMEmbeddingFunction` and `chunk-tune recommend --embedding-model …`, which calls LiteLLM and thus your provider). With `DummyEmbeddingFunction` (default when no embedding model is set on the CLI) or a local model you configure in code, scoring runs locally. The `estimate` CLI command performs a structural/token estimate and does **not** call embedding APIs.
+Only if **you** configure a cloud embedding model (e.g. via `LiteLLMEmbeddingFunction`, or CLI/workspace `embedding_model` resolved to a non-empty LiteLLM id, which calls your provider). With `DummyEmbeddingFunction` (no resolved embedding model from CLI or YAML) or a local model you configure in code, scoring runs locally. The `estimate` CLI command performs a structural/token estimate and does **not** call embedding APIs.
 
 ### How much does a real run cost?
 

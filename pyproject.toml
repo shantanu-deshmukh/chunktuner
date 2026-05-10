@@ -37,7 +37,7 @@ dependencies = [
 [project.optional-dependencies]
 mcp = ["mcp[cli]>=1.7"]
 docling = ["docling>=2.0"]
-ragas = ["ragas>=0.1"]
+ragas = ["ragas>=0.1.0,<1"]
 semantic = ["semchunk>=1.0"]
 code = ["tree-sitter>=0.22", "tree-sitter-python", "tree-sitter-javascript"]
 all = ["chunktuner[mcp,docling,ragas,semantic,code]"]

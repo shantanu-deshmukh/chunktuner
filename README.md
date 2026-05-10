@@ -127,7 +127,7 @@ chunk-tune cache      Manage embedding and chunk cache
 ```bash
 uv add chunktuner                    # library
 uv tool install chunktuner           # global CLI
-uvx chunktuner                       # ephemeral, no install
+uvx --from chunktuner chunk-tune …   # ephemeral CLI (no install)
 
 # With optional extras
 uv add "chunktuner[docling]"         # PDF/DOCX support

@@ -16,10 +16,10 @@ Default metric weights are returned by `chunktuner.config.score_profile_weights(
 
 | `use_case`      | Notes |
 |-----------------|--------|
-| `rag_qa`        | Weights `token_recall`, `token_iou`, `mrr`, optional `faithfulness`, `avg_tokens_per_query`, `duplication_ratio`. |
-| `search`        | Emphasizes `recall_at_k[1]` (exposed to the scorer as `recall_at_1`), `mrr`, `avg_tokens_per_query`, `duplication_ratio`. |
-| `summarization` | `token_recall`, `avg_chunk_length`, `duplication_ratio`. |
-| `code_assist`   | `token_recall`, `mrr`, `chunk_length_std`, `duplication_ratio`. |
+| `rag_qa`        | Weights `token_recall`, `mrr`, `token_iou`, optional `faithfulness` (treated as `0.0` when missing), and `duplication_ratio` (negative). |
+| `search`        | Weights `recall_at_1` (from `recall_at_k[1]`), `mrr`, and `duplication_ratio` (negative). |
+| `summarization` | Weights `token_recall`, `token_iou`, and `duplication_ratio` (negative). |
+| `code_assist`   | Weights `token_recall`, `mrr`, and `duplication_ratio` (negative). |
 
 Inspect `src/chunktuner/config.py` for the exact floating-point weights.
 

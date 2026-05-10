@@ -64,20 +64,20 @@ For how scores are combined per use case, see [Metrics reference](metrics.md). F
 - **Definition:** Mean tiktoken length of all chunks produced for the corpus in this run.
 - **Range:** roughly 0–∞ tokens
 - **Direction:** Neither strictly higher nor lower; profile-dependent.
-- **Use cases:** `summarization` weights longer chunks slightly positively; compare across strategies rather than chasing a single global optimum.
+- **Use cases:** Exposed to `ScoreCalculator` if you add a custom weight; **default** score profiles in `chunktuner.config.score_profile_weights` do not include this field — compare raw values across strategies instead.
 
 ### `chunk_length_std`
 
 - **Definition:** Standard deviation of per-chunk token lengths.
 - **Range:** 0–∞
-- **Direction:** Lower is often better for uniform pipelines (`code_assist` applies a negative weight).
+- **Direction:** Lower is often better for uniform pipelines; **default** `code_assist` weights do not include this field (use custom weights if you want it in the composite score).
 - **Intuition:** High variance can mean a mix of tiny and oversized chunks.
 
 ### `avg_tokens_per_query`
 
 - **Definition:** Average total tokens in retrieved chunks per query (after effective-k truncation).
 - **Range:** 0–∞
-- **Direction:** Lower is better for cost/latency (profiles use negative weights).
+- **Direction:** Lower is often better for cost/latency; **default** score profiles do not weight this field (you can supply `custom_weights` on `ScoreCalculator` to use it).
 - **Intuition:** Measures how “fat” the retrieval window is per query.
 
 ### `embedding_latency_ms` / `total_embedding_tokens`

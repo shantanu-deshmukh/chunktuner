@@ -14,7 +14,7 @@ Priority for base URL and key: CLI flags override workspace YAML, which override
 
 ## Workspace defaults
 
-In `.autochunk.yaml`, omit `embedding_model` to keep **dummy embeddings** for local CLI runs until you set a model explicitly or add one to the file. Set `llm_model` to the LiteLLM model id used for agentic chunking and generation-style metrics when enabled.
+In `.autochunk.yaml`, omit `embedding_model` (or set it to `null`) to keep **dummy embeddings** for `chunk-tune evaluate` / `recommend` / `compare` when you do not pass `--embedding-model`. Note: `chunk-tune init` writes a default `embedding_model` (`text-embedding-3-small`); delete or clear that field if you want dummy embeddings without a CLI override. Set `llm_model` to the LiteLLM model id used for agentic chunking and generation-style metrics when enabled.
 
 Optional fields:
 
@@ -33,7 +33,7 @@ Optional fields:
 export CHUNKTUNER_API_BASE=http://localhost:1234/v1
 export CHUNKTUNER_API_KEY=lm-studio
 export CHUNKTUNER_LLM_MODEL=openai/llama-3.2-3b-instruct
-uv run chunk-tune mcp
+uv run --extra mcp chunk-tune-mcp
 ```
 
 Or with the CLI:
@@ -49,7 +49,7 @@ chunk-tune recommend ./docs \
 
 ## MCP note
 
-The MCP server does not accept `api_key` in tool JSON. Configure `CHUNKTUNER_API_BASE`, `CHUNKTUNER_API_KEY`, and optionally `CHUNKTUNER_LLM_MODEL` before launching `chunk-tune mcp`.
+The MCP server does not accept `api_key` in tool JSON. Configure `CHUNKTUNER_API_BASE`, `CHUNKTUNER_API_KEY`, and optionally `CHUNKTUNER_LLM_MODEL` before launching `chunk-tune-mcp`.
 
 ## RAGAS
 

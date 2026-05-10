@@ -8,7 +8,7 @@ Created in the **current directory** by `chunk-tune init`. Merged at runtime wit
 |-------|------|---------|-------------|
 | `version` | int | `1` | Schema version |
 | `provider` | string | `openai` | Provider label (stored for tooling) |
-| `embedding_model` | string or omitted | *(none)* | If set, CLI `recommend` / `evaluate` / `compare` use LiteLLM embeddings; if omitted, those commands use dummy embeddings unless you pass `--embedding-model` |
+| `embedding_model` | string or omitted | *(none)* | If non-empty, CLI `recommend` / `evaluate` / `compare` use LiteLLM for that model when you confirm (or pass `--yes`); resolution order is **`--embedding-model` CLI flag, else this field**. `chunk-tune init` pre-fills this with `text-embedding-3-small` — remove or set `null` for dummy embeddings without a CLI override |
 | `llm_model` | string | `gpt-4o-mini` | Default LLM id for LiteLLM (agentic, generation metrics, dataset builders) |
 | `api_base` | string or null | `null` | Optional OpenAI-compatible base URL (LM Studio, Ollama, Azure, vLLM) |
 | `api_key` | string or null | `null` | Optional explicit API key; prefer `CHUNKTUNER_API_KEY` in environments where YAML should stay secret-free |
@@ -46,7 +46,7 @@ Logging for the library itself uses the standard `logging` module; configure han
 
 1. Run `chunk-tune init` in the directory where you want `.autochunk.yaml`.
 2. Edit `embedding_model`, `cache_dir`, or `use_case` as needed.
-3. Run `chunk-tune estimate` before paid `evaluate` / `recommend` with `--embedding-model`.
+3. Run `chunk-tune estimate` before paid `evaluate` / `recommend` whenever a non-empty embedding model is resolved (CLI `--embedding-model` or workspace `embedding_model`).
 
 ---
 
