@@ -39,14 +39,14 @@ uv add "chunktuner[semantic,ragas]"
 Typical flow: create workspace config, estimate cost, then recommend.
 
 ```bash
-chunk-tune init --provider openai
+chunk-tune init
 
 chunk-tune estimate ./my_docs --use-case rag_qa
 
 chunk-tune recommend ./my_docs --use-case rag_qa
 ```
 
-`estimate` is dry-run (no paid API calls). For `recommend` / `evaluate`, the embedding model is resolved as **`--embedding-model` if you pass it, otherwise `embedding_model` from `.autochunk.yaml`** (and `chunk-tune init` writes a default model there). LiteLLM runs only when that resolved value is non-empty; you are prompted unless you pass `--yes`. To force dummy embeddings with a post-init workspace, clear `embedding_model` in the YAML or pass a dedicated dummy-only config via `--config` — see [CLI reference](cli_reference.md) and [Configuration](configuration.md).
+`estimate` is dry-run (no paid API calls). `init` creates `.autochunk.yaml` with `embedding_model: null` — so `recommend` / `evaluate` / `compare` all use **dummy embeddings** by default (free, no API key needed). To enable real embeddings, pass `--embedding-model <model-id>` on the CLI or set `embedding_model` in `.autochunk.yaml`. LiteLLM runs only when a model is resolved; you are prompted unless you pass `--yes`. Any LiteLLM-supported provider works: OpenAI, Anthropic, Google Gemini, Cohere, Ollama, LM Studio, and more — see [Provider configuration](providers.md).
 
 ---
 

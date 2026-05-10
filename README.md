@@ -36,13 +36,13 @@ It benchmarks strategies like fixed-token windows, recursive character splitting
 # Install
 uv tool install chunktuner
 
-# Initialize workspace
-chunk-tune init --provider openai
+# Initialize workspace (embedding_model defaults to null — no API calls)
+chunk-tune init
 
 # See cost estimate before running anything
 chunk-tune estimate ./my_docs --use-case rag_qa
 
-# Get a recommendation
+# Get a recommendation (dummy embeddings by default; add --embedding-model for real ones)
 chunk-tune recommend ./my_docs --use-case rag_qa
 ```
 
@@ -50,11 +50,18 @@ chunk-tune recommend ./my_docs --use-case rag_qa
 
 ```python
 from pathlib import Path
-from chunktuner import FileIngestor, LiteLLMEmbeddingFunction, AutoTuner
+from chunktuner import FileIngestor, DummyEmbeddingFunction, LiteLLMEmbeddingFunction, AutoTuner
 from chunktuner import default_registry, Evaluator, ScoreCalculator
 
 docs = FileIngestor().ingest_dir(Path("./my_docs"))
-embedding_fn = LiteLLMEmbeddingFunction("text-embedding-3-small")
+
+# Free/offline: use dummy embeddings for quick strategy comparison.
+# Swap in LiteLLMEmbeddingFunction for real embeddings with any provider:
+#   LiteLLMEmbeddingFunction("text-embedding-3-small")          # OpenAI
+#   LiteLLMEmbeddingFunction("gemini/gemini-embedding-001")     # Google
+#   LiteLLMEmbeddingFunction("openai/<id>", api_base="http://localhost:1234/v1")  # local
+embedding_fn = DummyEmbeddingFunction()
+
 tuner = AutoTuner(
     strategies=default_registry,
     evaluator=Evaluator(embedding_fn),

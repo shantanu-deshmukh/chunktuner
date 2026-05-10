@@ -977,10 +977,12 @@ def run_benchmark_cli(argv: list[str] | None = None) -> Recommendation:
         help="Use LM Studio default base URL http://localhost:1234/v1 (requires --embedding-model and --llm-model).",
     )
     p.add_argument(
+        "--api-base",
         "--lm-studio-url",
         default=None,
+        dest="lm_studio_url",
         metavar="URL",
-        help="Base URL for any OpenAI-compatible server (LM Studio, Ollama, vLLM, Azure).",
+        help="Base URL for any OpenAI-compatible server (LM Studio, Ollama, vLLM, Azure). --lm-studio-url is a legacy alias.",
     )
     p.add_argument(
         "--llm-model",
@@ -1076,12 +1078,12 @@ def run_benchmark_cli(argv: list[str] | None = None) -> Recommendation:
     if api_base:
         if not args.embedding_model:
             raise SystemExit(
-                "--lm-studio / --lm-studio-url requires --embedding-model.\n"
+                "--lm-studio / --api-base requires --embedding-model.\n"
                 "Example: --embedding-model openai/nomic-embed-text-v1.5"
             )
         if not llm_model:
             raise SystemExit(
-                "--lm-studio / --lm-studio-url requires --llm-model.\n"
+                "--lm-studio / --api-base requires --llm-model.\n"
                 "Example: --llm-model openai/llama-3.2-3b-instruct"
             )
 

@@ -10,15 +10,16 @@ All commands are provided by the `chunk-tune` Typer app. Global patterns:
 
 ## `chunk-tune init`
 
-Create `.autochunk.yaml` in the **current working directory** with defaults for provider and embedding model.
+Create `.autochunk.yaml` in the **current working directory**. `embedding_model` is `null` by default — dummy embeddings are used (no API calls) until you set a model.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--provider` | string | `openai` | Provider label stored in config |
-| `-m`, `--model` | string | `text-embedding-3-small` | Default embedding model id |
+| `-m`, `--model` | string | none | Embedding model id (LiteLLM). Any provider: `text-embedding-3-small` (OpenAI), `gemini/gemini-embedding-001` (Google), `openai/<id>` for local servers. Omit to keep dummy embeddings. |
 
 ```bash
-chunk-tune init --provider openai -m text-embedding-3-small
+chunk-tune init
+# or, to bake in an embedding model:
+chunk-tune init -m gemini/gemini-embedding-001
 ```
 
 ```text

@@ -14,7 +14,7 @@ Priority for base URL and key: CLI flags override workspace YAML, which override
 
 ## Workspace defaults
 
-In `.autochunk.yaml`, omit `embedding_model` (or set it to `null`) to keep **dummy embeddings** for `chunk-tune evaluate` / `recommend` / `compare` when you do not pass `--embedding-model`. Note: `chunk-tune init` writes a default `embedding_model` (`text-embedding-3-small`); delete or clear that field if you want dummy embeddings without a CLI override. Set `llm_model` to the LiteLLM model id used for agentic chunking and generation-style metrics when enabled.
+In `.autochunk.yaml`, `embedding_model` defaults to `null` — `chunk-tune init` does **not** write an OpenAI model there any more. With `embedding_model: null`, all `evaluate` / `recommend` / `compare` runs use **dummy embeddings** (no API calls, no cost) until you either pass `--embedding-model` on the CLI or set the field in the YAML. Set `llm_model` to the LiteLLM model id used for agentic chunking and generation-style metrics when enabled.
 
 Optional fields:
 
@@ -23,9 +23,17 @@ Optional fields:
 
 ## Quick examples
 
-**OpenAI** — set `OPENAI_API_KEY`, use defaults or pass `--embedding-model text-embedding-3-small` and `--llm-model gpt-4o-mini`.
+**OpenAI** — set `OPENAI_API_KEY`, then e.g. `--embedding-model text-embedding-3-small` and `--llm-model gpt-4o-mini`.
 
-**Google Gemini** — set `GEMINI_API_KEY`, then e.g. `--embedding-model text-embedding-004` and `--llm-model gemini/gemini-1.5-flash`.
+**Anthropic / Claude** — set `ANTHROPIC_API_KEY`. Claude has no embeddings endpoint, so pair it with Gemini or a local embedding model:
+
+```bash
+chunk-tune recommend ./docs \
+  --embedding-model gemini/gemini-embedding-001 \
+  --llm-model claude-3-haiku-20240307
+```
+
+**Google Gemini** — set `GEMINI_API_KEY`, then e.g. `--embedding-model gemini/gemini-embedding-001` and `--llm-model gemini/gemini-2.0-flash`.
 
 **LM Studio** — start the local server, then:
 

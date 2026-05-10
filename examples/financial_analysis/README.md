@@ -112,17 +112,41 @@ uv run python run_benchmark.py \
   --llm-model gpt-4o-mini
 ```
 
+### Anthropic / Claude
+
+Claude has no embeddings endpoint, so pair it with Gemini embeddings (or a local model via `--api-base`):
+
+```bash
+export ANTHROPIC_API_KEY=your-key-here
+export GEMINI_API_KEY=your-key-here
+
+uv run python run_benchmark.py \
+  --fixture --num-transcripts 2 \
+  --embedding-model gemini/gemini-embedding-001 \
+  --llm-model claude-3-haiku-20240307
+```
+
+Or use a local embedding model from LM Studio alongside Claude:
+
+```bash
+uv run python run_benchmark.py \
+  --fixture --num-transcripts 2 \
+  --api-base http://localhost:1234/v1 \
+  --embedding-model openai/<your-local-embed-model-id> \
+  --llm-model claude-3-haiku-20240307
+```
+
 ### Any OpenAI-compatible server (Ollama, vLLM, Azure, etc.)
 
 ```bash
 uv run python run_benchmark.py \
   --fixture --num-transcripts 2 \
-  --lm-studio-url http://localhost:11434/v1 \
+  --api-base http://localhost:11434/v1 \
   --embedding-model openai/<model-id> \
   --llm-model openai/<model-id>
 ```
 
-`--lm-studio` sets the base URL to `http://localhost:1234/v1` and, when no `--api-key` is given, uses `api_key=lm-studio`. It still requires `--embedding-model` and `--llm-model` (see above).
+`--lm-studio` sets the base URL to `http://localhost:1234/v1` and, when no `--api-key` is given, uses `api_key=lm-studio`. It still requires `--embedding-model` and `--llm-model` (see above). `--api-base` is the general-purpose flag; `--lm-studio-url` is a legacy alias for it.
 
 ---
 
@@ -159,7 +183,7 @@ uv run python run_benchmark.py \
 | `--embedding-model MODEL` | none (dummy) | LiteLLM embedding model |
 | `--llm-model MODEL` | none | LiteLLM LLM — enables LLM dataset generation + generation metrics |
 | `--lm-studio` | off | LM Studio at `http://localhost:1234/v1`; requires `--embedding-model` and `--llm-model` |
-| `--lm-studio-url URL` | none | Custom OpenAI-compatible base URL; same requirements as `--lm-studio` |
+| `--api-base URL` | none | Custom OpenAI-compatible base URL (Ollama, vLLM, Azure, LM Studio); same requirements as `--lm-studio`. `--lm-studio-url` is a legacy alias. |
 | `--api-key KEY` | none | Override API key |
 | `--strategies NAMES` | `fixed_tokens,recursive_character` | Comma-separated strategy names |
 | `--all-text-strategies` | off | Run every text-compatible strategy |

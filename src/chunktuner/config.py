@@ -26,7 +26,6 @@ class WorkspaceConfig(BaseModel):
     """Shape of `.autochunk.yaml` (user workspace)."""
 
     version: int = 1
-    provider: str = "openai"
     embedding_model: str | None = None
     llm_model: str = DEFAULT_LLM_MODEL
     api_base: str | None = None
@@ -105,8 +104,13 @@ def score_profile_weights(use_case: str) -> dict[str, float]:
 def default_init_yaml() -> dict[str, Any]:
     return {
         "version": 1,
-        "provider": "openai",
-        "embedding_model": DEFAULT_EMBEDDING_MODEL,
+        # embedding_model: null → DummyEmbeddingFunction (free). Set to any LiteLLM model id,
+        # e.g. text-embedding-3-small (OpenAI), gemini/gemini-embedding-001 (Google),
+        # or openai/<id> for local servers (LM Studio, Ollama, vLLM).
+        "embedding_model": None,
+        # llm_model: used for agentic chunking and generation metrics only.
+        # Alternatives: claude-3-haiku-20240307 (Anthropic), gemini/gemini-2.0-flash (Google),
+        # openai/<id> for local servers.
         "llm_model": DEFAULT_LLM_MODEL,
         "api_base": None,
         "use_case": "rag_qa",

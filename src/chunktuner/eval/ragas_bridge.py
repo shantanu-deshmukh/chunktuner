@@ -8,8 +8,15 @@ import os
 logger = logging.getLogger(__name__)
 
 # RAGAS 0.3.x uses OpenAI by default for LLM-as-judge. Other providers require
-# custom LangChain wrappers and manual ragas_bridge configuration.
-_RAGAS_LLM_ENV_VARS = ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY")
+# custom LangChain wrappers. Key presence here enables the is_configured() check;
+# actual execution depends on the RAGAS/LangChain stack being configured for that provider.
+_RAGAS_LLM_ENV_VARS = (
+    "OPENAI_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "CHUNKTUNER_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+)
 
 _UNAVAILABLE: dict[str, float | None] = {
     "faithfulness": None,
