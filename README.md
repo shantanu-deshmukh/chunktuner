@@ -8,9 +8,25 @@
 
 Auto chunking tuner and MCP server for RAG pipelines.
 
-Give it your documents. It tries multiple chunking strategies, measures which one lets an AI answer questions most accurately, and tells you the winner.
+**Give it your documents.** It tries multiple chunking strategies, measures which setup supports retrieval best, and recommends a configuration for your corpus and use case. Zero API cost to start — run `estimate` for a dry-run before any paid calls.
 
-![chunktuner project flow: documents through strategies, evaluation, to a recommended configuration](https://raw.githubusercontent.com/shantanu-deshmukh/chunktuner/main/docs/assets/project-flow.svg)
+Full documentation: [shantanu-deshmukh.github.io/chunktuner](https://shantanu-deshmukh.github.io/chunktuner/)
+
+```mermaid
+flowchart TD
+    Lib["Python library"] --> Ingest
+    CLI["CLI (chunk-tune)"] --> Ingest
+    MCP["MCP server"] --> Ingest
+
+    Ingest["Ingest your documents<br/>files, URLs, repos"] --> Tune
+
+    subgraph Tune ["AutoTuner: for every strategy and param set"]
+        direction LR
+        Chunk["Chunk document"] --> Embed["Embed chunks<br/>and queries"] --> Score["Score retrieval<br/>recall, MRR, NDCG"]
+    end
+
+    Tune --> Rank["Rank all configs<br/>against baseline"] --> Best(["Recommended config<br/>.autochunk.yaml"])
+```
 
 ---
 
@@ -33,8 +49,9 @@ It benchmarks strategies like fixed-token windows, recursive character splitting
 ## Quickstart
 
 ```bash
-# Install
+# Install (pick one)
 uv tool install chunktuner
+pip install chunktuner
 
 # Initialize workspace (embedding_model defaults to null — no API calls)
 chunk-tune init
@@ -73,6 +90,36 @@ print(result.best.config)
 
 ---
 
+## Example output
+
+After running `recommend`, you get a ranked table with the winning config and how much it beats the baseline:
+
+```
+  Rank   Strategy              Params                  Score   Recall   MRR    IOU   AvgTok
+ ────────────────────────────────────────────────────────────────────────────────────────
+   1 ★   recursive_character   1024 chr / 154 ov        0.821    0.950  0.880  0.062      212
+     2   fixed_tokens          512 tok / 51 ov           0.764    0.920  0.840  0.059      444
+   ...
+  Baseline  fixed_tokens  512 tok / 0 ov  →  score 0.682
+  Winner beats baseline by +0.139  (+20.4%)
+```
+
+---
+
+## Real-world example
+
+See [examples/financial_analysis](examples/financial_analysis/README.md) for a full benchmark on S&P 500 earnings call transcripts — a corpus where separator choice and chunk size make a measurable difference in retrieval quality.
+
+Run it offline with zero API cost:
+
+```bash
+cd examples/financial_analysis
+uv sync
+uv run python run_benchmark.py --fixture --num-transcripts 2
+```
+
+---
+
 ## Supported strategies
 
 | Strategy              | Best for                              |
@@ -92,7 +139,7 @@ print(result.best.config)
 
 ## MCP server (Claude Desktop)
 
-Python **FastMCP** (`chunk-tune-mcp`, stdio). No Node.js build. See `docs/mcp_setup.md`.
+Python **FastMCP** (`chunk-tune-mcp`, stdio). No Node.js build. See [docs/mcp_setup.md](docs/mcp_setup.md).
 
 Add to your `.mcp.json`:
 
@@ -132,16 +179,18 @@ chunk-tune cache      Manage embedding and chunk cache
 ## Installation options
 
 ```bash
-uv add chunktuner                    # library
-uv tool install chunktuner           # global CLI
-uvx --from chunktuner chunk-tune …   # ephemeral CLI (no install)
+pip install chunktuner                 # CLI + library
+uv add chunktuner                      # library
+uv tool install chunktuner             # global CLI
+uvx --from chunktuner chunk-tune …     # ephemeral CLI (no install)
 
 # With optional extras
-uv add "chunktuner[docling]"         # PDF/DOCX support
-uv add "chunktuner[ragas]"           # generation metrics
-uv add "chunktuner[semantic]"        # semantic chunking
-uv add "chunktuner[code]"            # AST code chunking
-uv add "chunktuner[all]"             # everything
+pip install "chunktuner[docling]"      # PDF/DOCX support
+uv add "chunktuner[docling]"           # PDF/DOCX support
+uv add "chunktuner[ragas]"             # generation metrics
+uv add "chunktuner[semantic]"          # semantic chunking
+uv add "chunktuner[code]"              # AST code chunking
+uv add "chunktuner[all]"               # everything
 ```
 
 ---
@@ -152,11 +201,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-## 👨🏻‍💻 Author
+## Author
 
-[Shantanu Deshmukh](https://shantanudeshmukh.com)
+[Shantanu Deshmukh](https://shantanudeshmukh.com) — full stack developer building E2E AI applications.
 
-Full stack developer with experience in building E2E AI applications.
-
-[Linkedin](https://www.linkedin.com/in/shantanud/)
-/ [Twitter](https://twitter.com/askshantanu) / [AngelList](https://angel.co/u/dshantanu)
+[LinkedIn](https://www.linkedin.com/in/shantanud/) / [Twitter](https://twitter.com/askshantanu)
