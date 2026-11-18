@@ -94,14 +94,23 @@ NO_CACHE_HELP = (
 )
 
 
-def retrieval_scope_option() -> Any:
-    import click
+_RETRIEVAL_SCOPES = ("document", "corpus")
 
+
+def _validate_retrieval_scope(value: str) -> str:
+    if value not in _RETRIEVAL_SCOPES:
+        raise typer.BadParameter(f"must be one of: {', '.join(_RETRIEVAL_SCOPES)}")
+    return value
+
+
+def retrieval_scope_option() -> Any:
+    # A callback is used instead of `click_type=` so this works on every typer version
+    # allowed by pyproject (typer 0.29 removed the `click_type` keyword).
     return typer.Option(
         "document",
         "--retrieval-scope",
-        click_type=click.Choice(["document", "corpus"]),
-        help=RETRIEVAL_SCOPE_HELP,
+        callback=_validate_retrieval_scope,
+        help=f"{RETRIEVAL_SCOPE_HELP} [document|corpus]",
     )
 
 

@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `chunk-tune` crashed on start with typer >= 0.29 (`Option() got an unexpected keyword
+  argument 'click_type'`), which is what a fresh install of 0.2.0 resolves to. The
+  `--retrieval-scope` option now validates its value with a callback that works on every
+  supported typer version.
+
 ## [0.2.0] - 2026-11-18
 
 ### Breaking

@@ -19,7 +19,12 @@ from chunktuner.eval.embeddings import DummyEmbeddingFunction
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.models import EvalMetrics
 
-runner = CliRunner(mix_stderr=False)
+try:
+    # Click < 8.2 mixes stderr into stdout unless told otherwise.
+    runner = CliRunner(mix_stderr=False)
+except TypeError:
+    # Click >= 8.2 removed `mix_stderr`; stdout and stderr are always separate.
+    runner = CliRunner()
 
 _TRIVIAL_WARNING = "trivial eval dataset"
 
