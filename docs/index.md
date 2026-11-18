@@ -12,7 +12,7 @@
 
 ## What it does
 
-Chunking choices directly affect RAG quality. **chunktuner** benchmarks strategies (fixed windows, recursive splits, semantic splits, PDF structure, code AST, and more), scores them with retrieval metrics (token recall, MRR, NDCG) and optional generation metrics (RAGAS), then surfaces a winner.
+Chunking choices directly affect RAG quality. **chunktuner** benchmarks strategies (fixed windows, recursive splits, semantic splits, PDF structure, code AST, and more), scores them with retrieval metrics (token recall, MRR, NDCG) and optional generation metrics (RAGAS, Python API only), then surfaces a winner.
 
 ```text
 your docs → try multiple strategies → measure each → recommend the best config

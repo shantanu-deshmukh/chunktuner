@@ -9,8 +9,12 @@ jobs:
   python:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    env:
+      # Tests for these extras must FAIL (not skip) if the extra cannot be imported.
+      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +26,9 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: >-
+          uv sync --python ${{ matrix.python-version }} --dev
+          --extra semantic --extra code --extra ragas --extra mcp
 
       - name: Lint
         run: |
@@ -36,5 +42,47 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: coverage.xml
-        if: matrix.python-version == '3.11'
+        if: matrix.python-version == '3.12'
         continue-on-error: true
+
+  test-docling:
+    runs-on: ubuntu-latest
+    env:
+      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp,docling
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      # uv.lock pins the default (CUDA) torch wheels from PyPI. Install everything
+      # else from the lock, skip torch/torchvision/triton/nvidia-*, then install the
+      # locked torch/torchvision versions from the PyTorch CPU index via
+      # `uv pip install --torch-backend cpu`. `uv run --no-sync` keeps uv from
+      # re-syncing the CUDA wheels afterwards.
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          LOCKED=$(uv run --no-project --python 3.12 python -c "
+          import tomllib
+          pkgs = tomllib.load(open('uv.lock', 'rb'))['package']
+          skip = [p['name'] for p in pkgs
+                  if p['name'] in ('torch', 'torchvision', 'triton')
+                  or p['name'].startswith('nvidia-')]
+          pins = [p['name'] + '==' + p['version'] for p in pkgs
+                  if p['name'] in ('torch', 'torchvision')]
+          print(' '.join('--no-install-package ' + n for n in skip) + '|' + ' '.join(pins))
+          ")
+          NO_INSTALL="${LOCKED%%|*}"
+          TORCH_PINS="${LOCKED##*|}"
+          uv sync --python 3.12 --dev \
+            --extra semantic --extra code --extra ragas --extra mcp --extra docling \
+            $NO_INSTALL
+          uv pip install --python .venv --torch-backend cpu $TORCH_PINS
+          uv run --no-sync python -c "import torch; print('torch', torch.__version__); assert '+cpu' in torch.__version__"
+
+      - name: Test
+        run: uv run --no-sync pytest

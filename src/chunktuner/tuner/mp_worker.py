@@ -53,8 +53,13 @@ def mp_evaluate_task(task: dict) -> dict:
         llm_answer_model=task.get("llm_answer_model"),
         llm_api_base=task.get("llm_api_base"),
         llm_api_key=task.get("llm_api_key"),
+        retrieval_scope=task.get("retrieval_scope", "document"),
     )
     ucw = task.get("user_custom_weights")
-    scorer = ScoreCalculator(task["use_case"], custom_weights=ucw)
+    scorer = ScoreCalculator(
+        task["use_case"],
+        custom_weights=ucw,
+        retrieval_scope=task.get("score_retrieval_scope", "document"),
+    )
     res = ev.evaluate(strat, cfg, docs, ds, scorer=scorer)
     return res.model_dump()

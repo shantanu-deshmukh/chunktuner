@@ -25,4 +25,9 @@ def trivial_dataset_for_docs(
                 answer_spans=[(0, end)],
             )
         )
-    return EvalDataset(name=name, queries=queries, source="user_provided")
+    return EvalDataset(name=name, queries=queries, source="trivial")
+
+
+def is_trivial(ds: EvalDataset) -> bool:
+    """True if ``ds`` is a placeholder dataset (``source == "trivial"``); callers should warn."""
+    return ds.source == "trivial"

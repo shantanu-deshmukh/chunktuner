@@ -71,6 +71,8 @@ Dry-run **token, cost, and wall-time** estimates using `CostEstimator` — no AP
 | `--max-docs` | int | `100` | Cap documents after ingest |
 | `--config` | path | none | `.autochunk.yaml` |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
+| `--generate-dataset` | bool | false | Also estimate LLM eval-dataset generation (adds `llm_model` and `llm_dataset_tokens`; `llm_cost_usd` uses that model's pricing) |
+| `--llm-model` | string | none | LLM to estimate for `--generate-dataset`; default is workspace `llm_model` |
 
 ```bash
 chunk-tune estimate ./docs --strategies fixed_tokens,recursive_character
@@ -96,17 +98,24 @@ Runs the evaluator for each strategy × default param grid. Uses **dummy embeddi
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated names |
 | `--use-case` | string | `rag_qa` | `rag_qa`, `search`, `summarization`, `code_assist` |
 | `--max-docs` | int | `20` | Max documents |
-| `--top-k` | int | `5` | Retrieval depth (or workspace default) |
+| `--top-k` | int | `5` | No effect on metrics: retrieval depth is the effective k = 2000-token context budget / avg chunk tokens |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
 | `--embedding-model` | string | none | If set, overrides workspace `embedding_model`; a non-empty resolved model uses LiteLLM (prompts unless `--yes`) |
 | `--api-base` | string | none | OpenAI-compatible API base (overrides workspace / `CHUNKTUNER_API_BASE`) |
 | `--api-key` | string | none | API key for embeddings/LLM (overrides workspace / `CHUNKTUNER_API_KEY`) |
 | `--llm-model` | string | none | LiteLLM id for generation paths; default is workspace `llm_model` |
-| `--yes` | bool | false | Skip confirmation when using real embeddings |
+| `--yes` | bool | false | Skip confirmation for real embeddings and `--generate-dataset` |
+| `--dataset` | path | none | JSON/YAML eval dataset (`queries`: `question`, `document_id`, `answer_spans`, optional `reference_answer`). `document_id` may be the file path relative to `path`, an absolute path, or the file name. Mutually exclusive with `--generate-dataset` |
+| `--generate-dataset` | bool | false | Generate questions with the resolved `--llm-model`; prompts unless `--yes`; cached under `cache_dir/datasets/` and reused for the same documents, model and settings. Run `estimate --generate-dataset` first |
+| `--retrieval-scope` | choice | `document` | `document` or `corpus`: which ranking feeds the score's rank metrics (`mrr`, `recall@1`) |
+| `--no-cache` | bool | false | Disable the SQLite embedding cache (`cache_dir/chunktuner_cache.sqlite`); dummy embeddings are never cached |
+
+Without `--dataset` or `--generate-dataset`, a placeholder dataset is used (one query per document, whose answer is the first 200 characters) and a warning is printed on stderr.
 
 ```bash
 chunk-tune evaluate ./samples --output-format json
+chunk-tune evaluate ./samples --dataset questions.yaml --retrieval-scope corpus
 ```
 
 ```text
@@ -126,7 +135,7 @@ Full **AutoTuner** grid over strategies and default (or filtered) param grids; p
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated names |
 | `--use-case` | string | `rag_qa` | Use case for scoring |
 | `--max-docs` | int | `20` | Max documents |
-| `--top-k` | int | `5` | Evaluator top-k |
+| `--top-k` | int | `5` | No effect on metrics (see `evaluate`) |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
 | `--embedding-model` | string | none | Overrides workspace `embedding_model` (see `evaluate`) |
@@ -135,6 +144,7 @@ Full **AutoTuner** grid over strategies and default (or filtered) param grids; p
 | `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip paid-call confirmation |
 | `--no-baseline` | bool | false | Skip fixed-token baseline run |
+| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--no-cache` | | | Same as `evaluate` |
 
 ```bash
 chunk-tune recommend ./samples --no-baseline
@@ -152,7 +162,7 @@ Side-by-side comparison using the **first** default param set per strategy. Rich
 | `--strategies` | string | **required** | Comma-separated names |
 | `--use-case` | string | `rag_qa` | Use case |
 | `--max-docs` | int | `15` | Max documents |
-| `--top-k` | int | `5` | Evaluator top-k |
+| `--top-k` | int | `5` | No effect on metrics (see `evaluate`) |
 | `--config` | path | none | Workspace YAML |
 | `--report` | path | none | Write Markdown comparison table |
 | `--embedding-model` | string | none | Overrides workspace `embedding_model` (see `evaluate`) |
@@ -160,6 +170,7 @@ Side-by-side comparison using the **first** default param set per strategy. Rich
 | `--api-key` | string | none | Same as `evaluate` |
 | `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip confirmation |
+| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--no-cache` | | | Same as `evaluate` |
 
 ```bash
 chunk-tune compare ./samples --strategies fixed_tokens,recursive_character --report cmp.md

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -22,6 +22,7 @@ class PreviewChunksBody(BaseModel):
     text: str = Field(..., max_length=DEFAULT_MAX_PREVIEW_CHARS)
     strategy_name: str
     config: dict[str, Any] = Field(default_factory=dict)
+    content_type: str = "markdown"
 
 
 class EvaluateBody(BaseModel):
@@ -33,6 +34,10 @@ class EvaluateBody(BaseModel):
     top_k: int = 5
     dry_run: bool = False
     embedding_model: str | None = None
+    dataset_path: str | None = None
+    generate_dataset: bool = False
+    retrieval_scope: Literal["document", "corpus"] = "document"
+    use_cache: bool = True
 
 
 class RecommendConfigBody(BaseModel):
@@ -43,6 +48,10 @@ class RecommendConfigBody(BaseModel):
     max_docs: int = 20
     top_k: int = 5
     embedding_model: str | None = None
+    dataset_path: str | None = None
+    generate_dataset: bool = False
+    retrieval_scope: Literal["document", "corpus"] = "document"
+    use_cache: bool = True
 
 
 @router.get("/health")
@@ -58,7 +67,7 @@ def list_strategies(content_type: str | None = None) -> list[dict]:
 @router.post("/preview_chunks")
 def preview_chunks(body: PreviewChunksBody) -> list[dict]:
     try:
-        return preview_chunks_impl(body.text, body.strategy_name, body.config)
+        return preview_chunks_impl(body.text, body.strategy_name, body.config, body.content_type)
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -75,6 +84,10 @@ def evaluate_chunking(body: EvaluateBody) -> dict:
             top_k=body.top_k,
             dry_run=body.dry_run,
             embedding_model=body.embedding_model,
+            dataset_path=body.dataset_path,
+            generate_dataset=body.generate_dataset,
+            retrieval_scope=body.retrieval_scope,
+            use_cache=body.use_cache,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -91,6 +104,10 @@ def recommend_config(body: RecommendConfigBody) -> dict:
             max_docs=body.max_docs,
             top_k=body.top_k,
             embedding_model=body.embedding_model,
+            dataset_path=body.dataset_path,
+            generate_dataset=body.generate_dataset,
+            retrieval_scope=body.retrieval_scope,
+            use_cache=body.use_cache,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

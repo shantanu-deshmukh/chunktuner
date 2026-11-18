@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from mcp.types import CallToolResult, TextContent
 
-pytest.importorskip("mcp.shared.memory", reason="mcp with in-memory transport required")
+from tests._extras import require_extra
 
-from mcp.shared.memory import create_connected_server_and_client_session
+require_extra("mcp", "mcp.shared.memory", reason="mcp with in-memory transport required")
 
-from chunktuner.mcp.server import create_mcp_app
+from mcp.shared.memory import create_connected_server_and_client_session  # noqa: E402
+from mcp.types import CallToolResult, TextContent  # noqa: E402
+
+from chunktuner.mcp.server import create_mcp_app  # noqa: E402
 
 
 def _tool_payload(result: CallToolResult) -> Any:
@@ -134,6 +136,76 @@ def test_mcp_session_recommend_rejects_path_outside_base(
                     "strategies": ["fixed_tokens"],
                     "max_docs": 1,
                 },
+            )
+            assert bad.isError is True
+
+    asyncio.run(body())
+
+
+def test_mcp_session_evaluate_with_new_optional_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from chunktuner.mcp import service
+
+    base = tmp_path / "base"
+    corpus = base / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "a.txt").write_text("Alpha sentence about apples. " * 40)
+    (corpus / "b.txt").write_text("Beta sentence about rivers. " * 40)
+    ds = base / "ds.json"
+    ds.write_text(
+        json.dumps(
+            {
+                "queries": [
+                    {"question": "apples?", "document_id": "a.txt", "answer_spans": [[0, 40]]}
+                ]
+            }
+        )
+    )
+    monkeypatch.setenv("CHUNK_TUNER_BASE_DIR", str(base))
+    monkeypatch.setattr(service, "mcp_cache_dir", lambda: tmp_path / "cache")
+
+    async def body() -> None:
+        async with create_connected_server_and_client_session(create_mcp_app()) as session:
+            listed = await session.list_tools()
+            ev_tool = next(t for t in listed.tools if t.name == "evaluate_chunking")
+            props = ev_tool.inputSchema["properties"]
+            assert {"dataset_path", "generate_dataset", "retrieval_scope", "use_cache"} <= set(
+                props
+            )
+            assert "does NOT affect metrics" in props["top_k"]["description"]
+            preview_tool = next(t for t in listed.tools if t.name == "preview_chunks")
+            assert "content_type" in preview_tool.inputSchema["properties"]
+
+            raw = await session.call_tool(
+                "evaluate_chunking",
+                {
+                    "path": str(corpus),
+                    "strategies": ["fixed_tokens"],
+                    "content_type": "text",
+                    "dataset_path": str(ds),
+                    "retrieval_scope": "corpus",
+                    "use_cache": False,
+                },
+            )
+            assert raw.isError is False
+            out = _tool_payload(raw)
+            assert out["dataset_summary"] == {"queries": 1, "source": "user_provided"}
+            assert isinstance(out["warnings"], list)
+            assert not any("trivial" in w for w in out["warnings"])
+            assert out["results"]
+
+            default = _tool_payload(
+                await session.call_tool(
+                    "evaluate_chunking", {"path": str(corpus), "strategies": ["fixed_tokens"]}
+                )
+            )
+            assert any("trivial" in w for w in default["warnings"])
+
+            bad = await session.call_tool(
+                "evaluate_chunking",
+                {"path": str(corpus), "retrieval_scope": "global"},
             )
             assert bad.isError is True
 

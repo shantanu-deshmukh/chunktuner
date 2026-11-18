@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 from chunktuner.config import score_profile_weights
-from chunktuner.models import EvalMetrics
+from chunktuner.models import EvalMetrics, RetrievalScope
 
 
 class ScoreCalculator:
-    """Weighted sum of `EvalMetrics` fields for a use-case profile."""
+    """Weighted sum of `EvalMetrics` fields for a use-case profile.
 
-    def __init__(self, use_case: str, custom_weights: dict[str, float] | None = None):
+    ``retrieval_scope`` selects which ranking feeds the rank-based keys: with ``"corpus"``,
+    ``mrr`` reads ``corpus_mrr`` and ``recall_at_1`` reads ``corpus_recall_at_k[1]``
+    (missing corpus values count as 0.0). No weight profile references nDCG.
+    ``token_recall`` / ``token_iou`` / ``token_precision`` / ``duplication_ratio`` and the
+    length metrics are always document-based: they measure what fits in the context budget
+    for the query's own document, not ranking against distractors.
+    """
+
+    def __init__(
+        self,
+        use_case: str,
+        custom_weights: dict[str, float] | None = None,
+        *,
+        retrieval_scope: RetrievalScope = "document",
+    ):
         self.use_case = use_case
+        self.retrieval_scope: RetrievalScope = retrieval_scope
         self.user_custom_weights: dict[str, float] | None = (
             dict(custom_weights) if custom_weights is not None else None
         )
@@ -26,14 +41,29 @@ class ScoreCalculator:
         """Return a scalar score from weighted metric contributions (missing keys skipped)."""
         total = 0.0
         for key, w in self.weights.items():
-            val = _metric_value(metrics, key)
+            val = _metric_value(metrics, key, self.retrieval_scope)
             if val is None:
                 continue
             total += w * float(val)
         return total
 
 
-def _metric_value(m: EvalMetrics, key: str) -> float | None:
+def _corpus_metric_value(m: EvalMetrics, key: str) -> float | None:
+    """Corpus-scope value for a rank-based key, or ``None`` if ``key`` is not rank-based."""
+    if key == "mrr":
+        return m.corpus_mrr if m.corpus_mrr is not None else 0.0
+    if key == "recall_at_1":
+        return (m.corpus_recall_at_k or {}).get(1, 0.0)
+    return None
+
+
+def _metric_value(
+    m: EvalMetrics, key: str, retrieval_scope: RetrievalScope = "document"
+) -> float | None:
+    if retrieval_scope == "corpus":
+        corpus_val = _corpus_metric_value(m, key)
+        if corpus_val is not None:
+            return corpus_val
     if key == "faithfulness":
         return m.faithfulness if m.faithfulness is not None else 0.0
     if key == "answer_relevancy":

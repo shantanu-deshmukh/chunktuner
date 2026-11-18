@@ -1,4 +1,9 @@
-"""Late chunking placeholder: token pooling needs per-token embedding APIs."""
+"""``late_chunking``: fixed-token fallback; true late chunking is not implemented.
+
+Late chunking is an embedding-side technique (pooling per-token vectors from a whole-document
+forward pass), so it cannot be expressed as a pure text splitter. This strategy is excluded
+from default all-strategy tuner runs and must be requested explicitly.
+"""
 
 from __future__ import annotations
 
@@ -10,13 +15,14 @@ from chunktuner.models import Chunk, ChunkConfig, Document
 
 
 class LateChunkingStrategy:
-    """Placeholder: delegates to fixed token windows until true late pooling is wired."""
+    """Fixed-token fallback: delegates to `FixedTokenStrategy` (no late pooling)."""
 
     name = "late_chunking"
     supported_content_types = ["text", "markdown"]
     description = (
-        "Fallback: fixed token windows. True late chunking (document-level attention pooling) "
-        "requires embedding models that expose per-token vectors (e.g. Jina v2)."
+        "Fixed-token fallback (identical to fixed_tokens windows). True late chunking is NOT "
+        "implemented: it is an embedding-side technique, not a text-splitting one. "
+        "Excluded from default tuner runs; request it explicitly."
     )
 
     def __init__(self, encoding_name: str = "cl100k_base"):

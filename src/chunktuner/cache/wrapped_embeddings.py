@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from chunktuner.cache.embedding_cache import EmbeddingCache
+from pathlib import Path
+
+from chunktuner.cache.embedding_cache import EmbeddingCache, default_embedding_db_path
 from chunktuner.models import EmbeddingFunction
 
 
@@ -41,3 +43,24 @@ class CachedEmbeddingFunction:
         vec = self._inner.embed_query(text)
         self._cache.set(text, vec)
         return vec
+
+
+def maybe_cache_embeddings(
+    fn: EmbeddingFunction,
+    cache_dir: Path,
+    *,
+    enabled: bool = True,
+) -> EmbeddingFunction:
+    """Wrap a real embedding function with the SQLite cache under ``cache_dir``.
+
+    Returns ``fn`` unchanged when ``enabled`` is False or ``fn`` is a
+    ``DummyEmbeddingFunction`` (deterministic and free — caching would only add I/O).
+    The cache is keyed by ``fn.profile_name`` (the embedding model id), so results are
+    identical with and without the cache.
+    """
+    from chunktuner.eval.embeddings import DummyEmbeddingFunction
+
+    if not enabled or isinstance(fn, DummyEmbeddingFunction | CachedEmbeddingFunction):
+        return fn
+    cache = EmbeddingCache(default_embedding_db_path(cache_dir), fn.profile_name)
+    return CachedEmbeddingFunction(fn, cache)

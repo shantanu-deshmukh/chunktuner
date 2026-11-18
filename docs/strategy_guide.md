@@ -19,8 +19,8 @@
 ## `semantic` (extra: `chunktuner[semantic]`)
 
 - **Best for:** Long articles and mixed prose where token windows should follow `semchunk` splits.
-- **How it works:** Calls `semchunk` with tiktoken-based size; offsets must match the source string or an error is raised.
-- **Key parameters:** `max_tokens`, `similarity_threshold` (overlap fraction), or `overlap_tokens`.
+- **How it works:** Token-budget recursive splitting via `semchunk` with tiktoken sizing; does not use embeddings. Offsets must match the source string or an error is raised.
+- **Key parameters:** `max_tokens`, `overlap_tokens`, or `overlap_ratio` (overlap as a fraction of `max_tokens`; `overlap_tokens` wins). `similarity_threshold` is a deprecated alias for `overlap_ratio`.
 - **Performance:** CPU-bound tokenization + semchunk; moderate cost tier.
 - **When NOT to use:** Without the optional dependency; very short docs where recursion is simpler.
 
@@ -50,7 +50,7 @@
 
 ## `late_chunking`
 
-- **Best for:** Placeholder until per-token embedding APIs are wired for true late chunking.
+- **Best for:** Nothing beyond `fixed_tokens` — this is a fixed-token fallback. True late chunking is not implemented (it is an embedding-side technique). Excluded from default tuner runs; only evaluated when named explicitly.
 - **How it works:** Delegates to `fixed_tokens` with `chunk_size_tokens` / `overlap_tokens` mapping.
 - **Key parameters:** `chunk_size_tokens`, `overlap_tokens`.
 - **Performance:** Same as fixed tokens.

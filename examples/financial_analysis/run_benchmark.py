@@ -103,9 +103,9 @@ def financial_param_grid_for(
         grid.update(finance_recursive_param_grid())
     if "semantic" in strategy_names:
         grid["semantic"] = [
-            {"max_tokens": 512, "similarity_threshold": 0.0},
-            {"max_tokens": 512, "similarity_threshold": 0.1},
-            {"max_tokens": 1024, "similarity_threshold": 0.1},
+            {"max_tokens": 512, "overlap_ratio": 0.0},
+            {"max_tokens": 512, "overlap_ratio": 0.1},
+            {"max_tokens": 1024, "overlap_ratio": 0.1},
         ]
     if "late_chunking" in strategy_names:
         grid["late_chunking"] = [
@@ -827,7 +827,7 @@ def _params_label(result: Any) -> str:
     if name == "late_chunking":
         return f"{p.get('chunk_size_tokens', '?')} tok / {p.get('overlap_tokens', 0)} ov"
     if name == "semantic":
-        return f"{p.get('max_tokens', '?')} tok / thr={p.get('similarity_threshold', 0):.2f}"
+        return f"{p.get('max_tokens', '?')} tok / ovr={p.get('overlap_ratio', 0):.2f}"
     if name == "agentic":
         return f"{p.get('model', '?')} / {p.get('max_propositions', '?')} props"
     return str(p)

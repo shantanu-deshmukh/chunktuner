@@ -22,6 +22,7 @@ from chunktuner.models import (
     EvalDataset,
     EvalMetrics,
     EvalResult,
+    RetrievalScope,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,8 +91,36 @@ def _ndcg_at_k(rels: list[float], k: int) -> float:
     return float(dcg / idcg) if idcg > 0 else 0.0
 
 
+_RANK_KS: tuple[int, ...] = (1, 3, 5)
+
+
+def _ranking_metrics(rels: list[float]) -> tuple[dict[int, float], float, dict[int, float]]:
+    """Per-query hit@k, reciprocal rank, and nDCG@k from a ranked binary relevance list.
+
+    Shared by document-scope and corpus-scope retrieval so both use identical formulas.
+    """
+    hits = {kk: 1.0 if any(r > 0 for r in rels[:kk]) else 0.0 for kk in _RANK_KS}
+    ndcg = {kk: _ndcg_at_k(rels, kk) for kk in _RANK_KS}
+    first_rel = next((i + 1 for i, r in enumerate(rels) if r > 0), None)
+    rr = 1.0 / first_rel if first_rel else 0.0
+    return hits, rr, ndcg
+
+
 class Evaluator:
-    """Chunks documents, embeds text, runs retrieval metrics (and optional RAGAS)."""
+    """Chunks documents, embeds text, runs retrieval metrics (and optional RAGAS).
+
+    Args:
+        embedding_fn: Embeds chunk texts and queries.
+        top_k: Stored for API compatibility only; it does **not** affect any metric. The
+            number of chunks retrieved per query for token-level metrics is the effective k
+            from `compute_effective_k`: ``context_budget_tokens / avg chunk tokens``.
+        enable_generation_metrics: Compute RAGAS metrics when RAGAS and a judge key exist.
+        llm_client: Optional client forwarded to `RagasBridge`.
+        context_budget_tokens: Token budget used to derive the effective k.
+        retrieval_scope: Which ranking feeds the score's ``mrr`` / ``recall_at_1`` when the
+            evaluator builds its default `ScoreCalculator`. Both document-scope and
+            corpus-scope ranking metrics are always computed and stored on `EvalMetrics`.
+    """
 
     @staticmethod
     def _ragas_available() -> bool:
@@ -117,6 +146,7 @@ class Evaluator:
         llm_api_base: str | None = None,
         llm_api_key: str | None = None,
         ragas_bridge: object | None = None,
+        retrieval_scope: RetrievalScope = "document",
     ):
         self.embedding_fn = embedding_fn
         self.top_k = top_k
@@ -145,6 +175,7 @@ class Evaluator:
         self.llm_api_base = llm_api_base
         self.llm_api_key = llm_api_key
         self.ragas_bridge = ragas_bridge
+        self.retrieval_scope: RetrievalScope = retrieval_scope
 
     def _llm_provider_kwargs(self) -> dict[str, str]:
         kw: dict[str, str] = {}
@@ -174,7 +205,8 @@ class Evaluator:
             config: Strategy name and parameters.
             docs: Corpus (ids must match ``dataset`` references).
             dataset: Queries and gold spans for scoring.
-            scorer: If set, used to populate `EvalResult.score`.
+            scorer: If set, used to populate `EvalResult.score` (its own ``retrieval_scope``
+                applies). Otherwise a ``rag_qa`` scorer using ``self.retrieval_scope``.
 
         Returns:
             `EvalResult` with `EvalMetrics` and composite score.
@@ -201,9 +233,18 @@ class Evaluator:
         avg_chunk_len = float(np.mean(tok_lens)) if all_chunks else 0.0
         chunk_std = float(np.std(tok_lens)) if len(all_chunks) > 1 else 0.0
 
-        recalls_at: dict[int, list[float]] = {1: [], 3: [], 5: []}
+        recalls_at: dict[int, list[float]] = {k: [] for k in _RANK_KS}
         mrrs: list[float] = []
-        ndcgs: dict[int, list[float]] = {1: [], 3: [], 5: []}
+        ndcgs: dict[int, list[float]] = {k: [] for k in _RANK_KS}
+        c_recalls_at: dict[int, list[float]] = {k: [] for k in _RANK_KS}
+        c_mrrs: list[float] = []
+        c_ndcgs: dict[int, list[float]] = {k: [] for k in _RANK_KS}
+        # Normalized vectors of every chunk, reused for corpus-scope ranking (no extra embeds).
+        all_matn = (
+            chunk_vecs / (np.linalg.norm(chunk_vecs, axis=1, keepdims=True) + _EPS)
+            if all_chunks
+            else None
+        )
         precs: list[float] = []
         recalls: list[float] = []
         ious: list[float] = []
@@ -248,14 +289,24 @@ class Evaluator:
                 for j in range(len(ranked_chunks))
             ]
 
-            for kk in (1, 3, 5):
-                top = ranked_chunks[: min(kk, len(ranked_chunks))]
-                hit = any(gold & _token_indices_for_chunk(bounds, c) for c in top)
-                recalls_at[kk].append(1.0 if hit else 0.0)
-                ndcgs[kk].append(_ndcg_at_k(rels, kk))
+            hits, rr, ndcg_q = _ranking_metrics(rels)
+            for kk in _RANK_KS:
+                recalls_at[kk].append(hits[kk])
+                ndcgs[kk].append(ndcg_q[kk])
+            mrrs.append(rr)
 
-            first_rel = next((i + 1 for i, r in enumerate(rels) if r > 0), None)
-            mrrs.append(1.0 / first_rel if first_rel else 0.0)
+            # Corpus scope: rank against every chunk; only own-doc chunks can be relevant.
+            rel_by_idx = {
+                idx: (1.0 if gold & _token_indices_for_chunk(bounds, ch) else 0.0)
+                for idx, ch in pairs
+            }
+            c_order = np.argsort(-(all_matn @ qn))
+            c_rels = [rel_by_idx.get(int(j), 0.0) for j in c_order]
+            c_hits, c_rr, c_ndcg_q = _ranking_metrics(c_rels)
+            for kk in _RANK_KS:
+                c_recalls_at[kk].append(c_hits[kk])
+                c_ndcgs[kk].append(c_ndcg_q[kk])
+            c_mrrs.append(c_rr)
 
             topk = ranked_chunks[:k_use]
             ret_union: set[int] = set()
@@ -283,6 +334,9 @@ class Evaluator:
             recall_at_k=recall_at_k_dict,
             mrr=mean(mrrs),
             ndcg_at_k=ndcg_at_k_dict,
+            corpus_recall_at_k={k: mean(v) for k, v in c_recalls_at.items()},
+            corpus_mrr=mean(c_mrrs),
+            corpus_ndcg_at_k={k: mean(v) for k, v in c_ndcgs.items()},
             avg_tokens_per_query=mean(toks_per_q),
             duplication_ratio=mean(dups),
             avg_chunk_length=avg_chunk_len,
@@ -300,7 +354,7 @@ class Evaluator:
                 topk_by_q,
             )
 
-        sc = scorer or ScoreCalculator("rag_qa")
+        sc = scorer or ScoreCalculator("rag_qa", retrieval_scope=self.retrieval_scope)
         score = sc.score(metrics)
         return EvalResult(
             strategy_name=strategy.name,

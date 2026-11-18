@@ -110,3 +110,27 @@ def test_parallel_warm_cache_matches_sequential_with_sqlite(fixture_docs, tmp_pa
 
     assert result_seq.best.strategy_name == result_par.best.strategy_name
     assert abs(result_seq.best.score - result_par.best.score) < 1e-6
+
+
+def test_parallel_equals_sequential_corpus_scope(tmp_path: Path) -> None:
+    """retrieval_scope reaches the worker's Evaluator and ScoreCalculator (mp_worker path)."""
+    for i, topic in enumerate(["apples", "rivers", "stars"]):
+        (tmp_path / f"d{i}.txt").write_text(f"Sentence about {topic} number {i}. " * 60)
+    docs = FileIngestor(root=tmp_path).ingest_dir(tmp_path)
+    registry = build_full_registry()
+
+    def make_tuner() -> AutoTuner:
+        return AutoTuner(
+            strategies=registry,
+            evaluator=Evaluator(DummyEmbeddingFunction(), retrieval_scope="corpus"),
+            scorer=ScoreCalculator("search", retrieval_scope="corpus"),
+        )
+
+    grid = {"fixed_tokens": [{"max_tokens": 32, "overlap_tokens": 0}]}
+    kw = {"strategies": ["fixed_tokens"], "param_grid": grid, "baseline": False}
+    seq = make_tuner().recommend(docs, "search", **kw)
+    par = make_tuner().recommend(docs, "search", parallel=True, max_workers=2, **kw)
+    assert [r.score for r in seq.ranked] == pytest.approx([r.score for r in par.ranked])
+    corp = ScoreCalculator("search", retrieval_scope="corpus")
+    for r in par.ranked:
+        assert r.score == pytest.approx(corp.score(r.metrics))

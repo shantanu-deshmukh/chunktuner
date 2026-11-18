@@ -3,7 +3,7 @@ name = "chunktuner"
 version = "0.1.2"
 description = "Auto chunking tuner and MCP server for RAG pipelines"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 keywords = ["rag", "chunking", "llm", "embeddings", "nlp", "mcp", "retrieval"]
 classifiers = [
@@ -13,9 +13,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
@@ -23,7 +24,7 @@ classifiers = [
 dependencies = [
     "typer>=0.12,<1",
     "pydantic>=2.0,<3",
-    "litellm>=1.40,<2",
+    "litellm>=1.83,<2",
     "rich>=13.0,<14",
     "fastapi>=0.111,<1",
     "uvicorn>=0.29,<1",
@@ -35,9 +36,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp[cli]>=1.7"]
+mcp = ["mcp[cli]>=1.27,<2"]
 docling = ["docling>=2.0"]
-ragas = ["ragas>=0.1.0,<1"]
+ragas = ["ragas>=0.3.2,<0.4", "datasets>=2.14.7"]
 semantic = ["semchunk>=1.0"]
 code = ["tree-sitter>=0.22", "tree-sitter-python", "tree-sitter-javascript"]
 all = ["chunktuner[mcp,docling,ragas,semantic,code]"]
@@ -70,7 +71,9 @@ packages = ["src/chunktuner"]
 [tool.ruff]
 src = ["src", "tests", "examples"]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
+# Fixture files are input data for chunking tests, not project code.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -88,6 +91,6 @@ dev = [
     "pytest-cov>=6.0",
     "python-dotenv>=1.0.0",
     "ruff>=0.15.12",
-    "mcp[cli]>=1.7",
+    "mcp[cli]>=1.27,<2",
     "pre-commit>=4.6.0",
 ]

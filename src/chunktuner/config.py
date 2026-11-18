@@ -65,6 +65,11 @@ def default_cache_dir() -> Path:
     return Path.home() / ".cache" / "chunktuner"
 
 
+def workspace_cache_dir(ws: WorkspaceConfig) -> Path:
+    """Cache directory for ``ws`` (same rule as ``chunk-tune cache stats|clear``)."""
+    return Path(ws.cache_dir).expanduser() if ws.cache_dir else default_cache_dir()
+
+
 def score_profile_weights(use_case: str) -> dict[str, float]:
     """Default metric weights for each use-case profile.
 

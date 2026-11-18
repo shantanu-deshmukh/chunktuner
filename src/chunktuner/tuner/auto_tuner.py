@@ -20,6 +20,10 @@ from chunktuner.models import (
 
 logger = logging.getLogger(__name__)
 
+# Strategies skipped when ``strategies`` is None; they run only when named explicitly.
+# ``late_chunking`` is a fixed-token fallback and would only duplicate ``fixed_tokens``.
+_EXPLICIT_ONLY = frozenset({"late_chunking"})
+
 
 def _embed_task_fields(embedding_fn: object) -> dict:
     cls = embedding_fn.__class__.__name__
@@ -70,6 +74,19 @@ class AutoTuner:
         self.scorer = scorer
         self.cache = cache
 
+    def _baseline_config(self, ct: str) -> ChunkConfig | None:
+        """Baseline config for ``ct``: fixed_tokens 512/0, else code_window 512/0, else None."""
+        registered = set(self.strategies.names())
+        candidates = (
+            ("fixed_tokens", {"max_tokens": 512, "overlap_tokens": 0}),
+            ("code_window", {"max_tokens": 512, "overlap_lines": 0}),
+        )
+        for name, params in candidates:
+            if name in registered and ct in self.strategies.get(name).supported_content_types:
+                return ChunkConfig(name=name, params=params)
+        logger.warning("No baseline strategy supports content_type=%r; skipping baseline", ct)
+        return None
+
     def recommend(
         self,
         docs: list[Document],
@@ -99,14 +116,16 @@ class AutoTuner:
             content_type: If set, selects strategies for this content type; otherwise
                 inferred from ``docs[0]``.
             strategies: Subset of registered strategy names; ``None`` means all
-                compatible with the content type.
+                compatible with the content type except explicit-only ones
+                (``late_chunking``).
             param_grid: Optional map ``strategy_name -> list[params dict]`` overriding
                 ``default_param_grid()``.
             max_docs: Cap documents used (after sampling order); ``None`` uses all.
             embedding_profile: Override label stored on results; default from evaluator.
             dataset: Optional `EvalDataset`; default is `trivial_dataset_for_docs`.
-            baseline: When True and ``fixed_tokens`` is registered, evaluates a simple
-                baseline config first.
+            baseline: When True, evaluates a simple baseline config first:
+                ``fixed_tokens`` 512/0, or ``code_window`` 512/0 when ``fixed_tokens`` does not
+                support the content type (e.g. code). Skipped with a warning if neither does.
             parallel: Use a process pool for independent evaluations.
             max_workers: Worker count when ``parallel`` is True.
             warm_cache: When True with ``parallel``, pre-chunk and ``embed_documents`` all chunk
@@ -135,20 +154,19 @@ class AutoTuner:
                 available = sorted(all_registered)
                 raise ValueError(f"Unknown strategies: {invalid}. Available: {available}")
         if strategies is None:
-            names = [n for n in self.strategies.names(ct)]
+            names = [n for n in self.strategies.names(ct) if n not in _EXPLICIT_ONLY]
         else:
             names = [n for n in strategies if n in allowed]
 
         results: list[EvalResult] = []
         baseline_res: EvalResult | None = None
 
-        if baseline and "fixed_tokens" in self.strategies.names():
-            ft = self.strategies.get("fixed_tokens")
-            bl_cfg = ChunkConfig(
-                name="fixed_tokens",
-                params={"max_tokens": 512, "overlap_tokens": 0},
+        bl_cfg = self._baseline_config(ct) if baseline else None
+        if bl_cfg is not None:
+            bl_strat = self.strategies.get(bl_cfg.name)
+            baseline_res = self.evaluator.evaluate(
+                bl_strat, bl_cfg, sampled, ds, scorer=self.scorer
             )
-            baseline_res = self.evaluator.evaluate(ft, bl_cfg, sampled, ds, scorer=self.scorer)
             results.append(baseline_res)
 
         grid_in = param_grid or {}
@@ -166,6 +184,8 @@ class AutoTuner:
                     and int(cfg.params.get("max_tokens", -1)) == 512
                     and int(cfg.params.get("overlap_tokens", -1)) == 0
                 ):
+                    continue
+                if bl_cfg is not None and name == bl_cfg.name and cfg.params == bl_cfg.params:
                     continue
                 jobs.append((name, dict(params)))
 
@@ -196,6 +216,8 @@ class AutoTuner:
                         "dataset": ds_payload,
                         "use_case": use_case,
                         "user_custom_weights": self.scorer.user_custom_weights,
+                        "score_retrieval_scope": self.scorer.retrieval_scope,
+                        "retrieval_scope": self.evaluator.retrieval_scope,
                         "top_k": self.evaluator.top_k,
                         "enable_generation_metrics": self.evaluator.enable_generation_metrics,
                         "llm_answer_model": self.evaluator.llm_answer_model,

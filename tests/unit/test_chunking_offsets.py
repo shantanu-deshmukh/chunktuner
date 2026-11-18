@@ -11,6 +11,7 @@ from chunktuner.chunking.fixed_tokens import FixedTokenStrategy
 from chunktuner.chunking.recursive_character import RecursiveCharacterStrategy
 from chunktuner.chunking.validation import validate_chunk_offsets
 from chunktuner.models import Chunk, ChunkConfig, Document
+from tests._extras import require_extra
 
 REGISTRY = build_full_registry()
 
@@ -146,7 +147,7 @@ def test_offset_invariant_optional_strategies(
     params: dict,
 ) -> None:
     if strategy_name in ("semantic", "markdown_semantic"):
-        pytest.importorskip("semchunk")
+        require_extra("semantic", "semchunk")
     strategy = _strategy(strategy_name)
     if content_type == "markdown":
         body = "# Title\n\n" + ("Section paragraph. " * 40)

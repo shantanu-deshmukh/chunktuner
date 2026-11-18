@@ -14,11 +14,11 @@ Full documentation: [shantanu-deshmukh.github.io/chunktuner](https://shantanu-de
 
 ```mermaid
 flowchart TD
-    Lib["Python library"] --> Ingest
-    CLI["CLI (chunk-tune)"] --> Ingest
-    MCP["MCP server"] --> Ingest
+    Lib["Python library<br/>files, URLs, repos"] --> Ingest
+    CLI["CLI (chunk-tune)<br/>local files / directories"] --> Ingest
+    MCP["MCP server<br/>local files under CHUNK_TUNER_BASE_DIR"] --> Ingest
 
-    Ingest["Ingest your documents<br/>files, URLs, repos"] --> Tune
+    Ingest["Ingest your documents"] --> Tune
 
     subgraph Tune ["AutoTuner: for every strategy and param set"]
         direction LR
@@ -34,7 +34,9 @@ flowchart TD
 
 When building a RAG pipeline, how you split documents into chunks directly impacts retrieval quality. `chunktuner` automates the process of finding the optimal chunking strategy for your specific corpus, embedding model, and use case.
 
-It benchmarks strategies like fixed-token windows, recursive character splitting, semantic splitting, PDF structural chunking, and AST-based code chunking — then scores each one against real retrieval metrics (token recall, MRR, NDCG) and optional generation metrics (RAGAS faithfulness, answer relevancy).
+It benchmarks strategies like fixed-token windows, recursive character splitting, semantic splitting, PDF structural chunking, and AST-based code chunking — then scores each one against retrieval metrics (token recall, MRR, NDCG) over an evaluation dataset (your own question file, LLM-generated questions, or a built-in placeholder dataset). Generation metrics (RAGAS faithfulness, answer relevancy) are optional and available only through the Python API (`Evaluator(..., enable_generation_metrics=True)` with the `ragas` extra); the CLI and MCP server report retrieval metrics only.
+
+The CLI and MCP server ingest local files and directories. URL and repository ingestion (`URLIngestor`, `RepoIngestor`) are available from the Python API.
 
 ---
 
@@ -62,6 +64,17 @@ chunk-tune estimate ./my_docs --use-case rag_qa
 # Get a recommendation (dummy embeddings by default; add --embedding-model for real ones)
 chunk-tune recommend ./my_docs --use-case rag_qa
 ```
+
+**Evaluation datasets.** Without a dataset flag, `evaluate` / `compare` / `recommend` use a placeholder dataset (one query per document, whose answer is the document's first 200 characters) and print a warning. For meaningful scores, use one of:
+
+- `--dataset questions.yaml`: your own JSON/YAML file with a `queries` list (`question`, `document_id`, `answer_spans`, optional `reference_answer`). `document_id` can be the file path relative to the corpus path, an absolute path, or the file name.
+- `--generate-dataset`: generate questions with the configured `llm_model`. Run `chunk-tune estimate ./my_docs --generate-dataset` first to see the cost. The command asks for confirmation unless you pass `--yes`, and caches the dataset under `cache_dir` so re-runs reuse it.
+
+Other evaluation flags:
+
+- `--retrieval-scope document|corpus`: which ranking feeds the score's rank metrics. The default is `document`.
+- `--no-cache`: turn off the embedding cache, which is on by default for real embedding models.
+- `--top-k` has no effect on metrics. Retrieval depth is a 2000-token context budget divided by the average chunk size.
 
 **Python API:**
 
@@ -126,11 +139,11 @@ uv run python run_benchmark.py --fixture --num-transcripts 2
 | --------------------- | ------------------------------------- |
 | `fixed_tokens`        | Baseline; uniform token windows       |
 | `recursive_character` | General prose and documentation       |
-| `semantic`            | Theme-heavy articles                  |
+| `semantic`            | Token-budget recursive splits (semchunk; no embeddings) |
 | `markdown_semantic`   | Structured Markdown docs              |
 | `pdf_structural`      | PDFs with layout regions and tables   |
 | `structural_semantic` | PDF/DOCX with mixed layout and text   |
-| `late_chunking`       | Long docs with dense cross-references |
+| `late_chunking`       | Fixed-token fallback; true late chunking not implemented (explicit only) |
 | `agentic`             | High-value narrative documents        |
 | `code_ast`            | Code repos (Python, JavaScript)       |
 | `code_window`         | Code baseline (sliding window)        |
@@ -157,7 +170,7 @@ Add to your `.mcp.json`:
 }
 ```
 
-Tools available: `list_strategies`, `preview_chunks`, `evaluate_chunking`, `recommend_config`.
+Tools available: `list_strategies`, `preview_chunks`, `evaluate_chunking`, `recommend_config`. `evaluate_chunking` and `recommend_config` accept optional `dataset_path`, `generate_dataset`, `retrieval_scope` and `use_cache` fields, and their responses include a `warnings` list. See [docs/mcp_setup.md](docs/mcp_setup.md).
 
 ---
 
@@ -187,7 +200,7 @@ uvx --from chunktuner chunk-tune …     # ephemeral CLI (no install)
 # With optional extras
 pip install "chunktuner[docling]"      # PDF/DOCX support
 uv add "chunktuner[docling]"           # PDF/DOCX support
-uv add "chunktuner[ragas]"             # generation metrics
+uv add "chunktuner[ragas]"             # generation metrics (Python API only)
 uv add "chunktuner[semantic]"          # semantic chunking
 uv add "chunktuner[code]"              # AST code chunking
 uv add "chunktuner[all]"               # everything

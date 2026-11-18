@@ -39,11 +39,15 @@ class EmbeddingCache:
         if row is None:
             return None
         dim, blob = row
-        return list(struct.unpack(f"{dim}f", blob))
+        # float64 rows (current) round-trip exactly; float32 rows come from older versions.
+        fmt = "d" if len(blob) == dim * 8 else "f"
+        return list(struct.unpack(f"{dim}{fmt}", blob))
 
     def set(self, text: str, embedding: list[float]) -> None:
         dim = len(embedding)
-        blob = struct.pack(f"{dim}f", *embedding)
+        # Store float64 so cached vectors equal the provider's values exactly (results must not
+        # change between a cold and a warm cache).
+        blob = struct.pack(f"{dim}d", *embedding)
         self._conn.execute(
             "INSERT OR REPLACE INTO embeddings (k, dim, vec) VALUES (?, ?, ?)",
             (self._key(text), dim, blob),

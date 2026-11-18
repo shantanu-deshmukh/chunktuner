@@ -12,7 +12,7 @@ Run `chunk-tune estimate ./my_docs` first — it reports token counts and a cost
 
 ### Does the CLI cache embeddings automatically?
 
-The default `chunk-tune recommend` / `evaluate` paths construct `LiteLLMEmbeddingFunction` or `DummyEmbeddingFunction` directly (see `src/chunktuner/cli/recommend_cmd.py` and `evaluate_cmd.py`) — they do **not** wrap `CachedEmbeddingFunction` for you. The library provides `EmbeddingCache` and `CachedEmbeddingFunction` (`chunktuner.cache`) for applications that want SQLite-backed reuse; see [Python API](python_api.md). The `chunk-tune cache` command inspects or clears the on-disk DB used when you opt into caching in your own code.
+Yes, for real embedding models. `chunk-tune evaluate`, `compare` and `recommend` (and the MCP `evaluate_chunking` / `recommend_config` tools) wrap the embedding function in `CachedEmbeddingFunction`, backed by `<cache_dir>/chunktuner_cache.sqlite` (workspace `cache_dir`, default `~/.cache/chunktuner`). Cached vectors are exact copies, so results are the same with or without the cache. Pass `--no-cache` (MCP: `use_cache: false`) to turn it off. Dummy embeddings are never cached. `chunk-tune cache stats|clear` inspects or clears the database. For your own code, the library exposes `EmbeddingCache` and `CachedEmbeddingFunction` (`chunktuner.cache`); see [Python API](python_api.md).
 
 ## Comparison
 

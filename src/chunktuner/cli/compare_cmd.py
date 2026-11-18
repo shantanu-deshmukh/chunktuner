@@ -10,15 +10,28 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from chunktuner.cache.wrapped_embeddings import maybe_cache_embeddings
 from chunktuner.chunking import default_registry
-from chunktuner.cli.common import load_workspace_path
-from chunktuner.config import load_workspace_config, resolve_provider_config
+from chunktuner.cli.common import (
+    DATASET_HELP,
+    GENERATE_DATASET_HELP,
+    NO_CACHE_HELP,
+    TOP_K_HELP,
+    check_dataset_flags,
+    load_workspace_path,
+    resolve_eval_dataset,
+    retrieval_scope_option,
+)
+from chunktuner.config import (
+    load_workspace_config,
+    resolve_provider_config,
+    workspace_cache_dir,
+)
 from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
-from chunktuner.eval.trivial_dataset import trivial_dataset_for_docs
 from chunktuner.ingestion.file_ingestor import FileIngestor
-from chunktuner.models import ChunkConfig, UseCase
+from chunktuner.models import ChunkConfig, RetrievalScope, UseCase
 
 console = Console()
 
@@ -30,7 +43,7 @@ def register(app: typer.Typer) -> None:
         strategies: str = typer.Option(..., "--strategies", help="Comma-separated names"),
         use_case: str = typer.Option("rag_qa", "--use-case"),
         max_docs: int = typer.Option(15, "--max-docs"),
-        top_k: int = typer.Option(5, "--top-k"),
+        top_k: int = typer.Option(5, "--top-k", help=TOP_K_HELP),
         config: Path | None = typer.Option(None, "--config"),
         report: Path | None = typer.Option(None, "--report", help="Write Markdown report path"),
         embedding_model: str | None = typer.Option(None, "--embedding-model"),
@@ -38,9 +51,19 @@ def register(app: typer.Typer) -> None:
         api_key: str | None = typer.Option(None, "--api-key"),
         llm_model: str | None = typer.Option(None, "--llm-model"),
         yes: bool = typer.Option(False, "--yes"),
+        dataset: Path | None = typer.Option(
+            None, "--dataset", exists=True, dir_okay=False, help=DATASET_HELP
+        ),
+        generate_dataset: bool = typer.Option(
+            False, "--generate-dataset", help=GENERATE_DATASET_HELP
+        ),
+        retrieval_scope: str = retrieval_scope_option(),
+        no_cache: bool = typer.Option(False, "--no-cache", help=NO_CACHE_HELP),
     ) -> None:
         """Compare a small set of strategies on the same corpus."""
+        check_dataset_flags(dataset, generate_dataset)
         ws = load_workspace_config(load_workspace_path(config))
+        cache_dir = workspace_cache_dir(ws)
         resolved_api_base, resolved_api_key = resolve_provider_config(ws)
         resolved_api_base = api_base or resolved_api_base
         resolved_api_key = api_key or resolved_api_key
@@ -64,22 +87,36 @@ def register(app: typer.Typer) -> None:
             if resolved_embedding_model
             else DummyEmbeddingFunction()
         )
+        embed = maybe_cache_embeddings(embed, cache_dir, enabled=not no_cache)
         root = path.resolve().parent if path.is_file() else path.resolve()
         fi = FileIngestor(root=root)
         docs = fi.ingest_path(path) if path.is_file() else fi.ingest_dir(path)
         docs = docs[:max_docs]
-        ds = trivial_dataset_for_docs(docs)
+        ds = resolve_eval_dataset(
+            docs,
+            root=root,
+            dataset=dataset,
+            generate_dataset=generate_dataset,
+            llm_model=resolved_llm_model,
+            api_base=resolved_api_base,
+            api_key=resolved_api_key,
+            cache_dir=cache_dir,
+            yes=yes,
+        )
         names = [s.strip() for s in strategies.split(",") if s.strip()]
         if not names:
             typer.echo("Provide at least one strategy in --strategies", err=True)
             raise typer.Exit(2)
-        scorer = ScoreCalculator(cast(UseCase, use_case))
+        scorer = ScoreCalculator(
+            cast(UseCase, use_case), retrieval_scope=cast(RetrievalScope, retrieval_scope)
+        )
         ev = Evaluator(
             embed,
             top_k=top_k or ws.top_k,
             llm_answer_model=resolved_llm_model,
             llm_api_base=resolved_api_base,
             llm_api_key=resolved_api_key,
+            retrieval_scope=cast(RetrievalScope, retrieval_scope),
         )
         rows = []
         with Progress(

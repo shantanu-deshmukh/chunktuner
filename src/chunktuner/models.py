@@ -8,7 +8,12 @@ from pydantic import BaseModel, Field, model_validator
 
 ContentType = Literal["text", "markdown", "html", "pdf", "docx", "pptx", "code"]
 UseCase = Literal["rag_qa", "search", "summarization", "code_assist"]
-DatasetSource = Literal["llm_generated", "user_provided"]
+# ``trivial``: placeholder dataset from ``trivial_dataset_for_docs`` (no real questions);
+# scores computed on it are smoke-test quality only.
+DatasetSource = Literal["llm_generated", "user_provided", "trivial"]
+# ``document``: each query ranks only chunks of its own document (default).
+# ``corpus``: each query ranks every chunk in the corpus (distractors from other docs compete).
+RetrievalScope = Literal["document", "corpus"]
 
 
 class Document(BaseModel):
@@ -125,6 +130,11 @@ class EvalMetrics(BaseModel):
     chunk_length_std: float = 0.0
     faithfulness: float | None = None
     answer_relevancy: float | None = None
+    # Corpus-scope ranking metrics (query ranked against ALL chunks; only chunks of the
+    # query's own document can be relevant). ``None`` on results produced before they existed.
+    corpus_recall_at_k: dict[int, float] | None = None
+    corpus_mrr: float | None = None
+    corpus_ndcg_at_k: dict[int, float] | None = None
     embedding_latency_ms: float = 0.0
     total_embedding_tokens: int = 0
 
@@ -156,6 +166,9 @@ class CostEstimate(BaseModel):
     llm_cost_usd: float
     estimated_wall_time_min: float
     strategy_configs: int
+    # Set only when an LLM-generated eval dataset is estimated explicitly (``llm_model`` given).
+    llm_model: str | None = None
+    llm_dataset_tokens: int | None = None
 
 
 class EmbeddingFunction(Protocol):
