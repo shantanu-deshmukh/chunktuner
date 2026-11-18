@@ -1,6 +1,6 @@
 [project]
 name = "chunktuner"
-version = "0.2.0"
+version = "0.2.1"
 description = "Auto chunking tuner and MCP server for RAG pipelines"
 readme = "README.md"
 requires-python = ">=3.11"
