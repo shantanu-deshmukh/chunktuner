@@ -4,7 +4,7 @@
 #
 # What this does:
 #   1. Validates the version and checks for conflicts
-#   2. Updates pyproject.toml version
+#   2. Updates pyproject.toml version and refreshes uv.lock
 #   3. Promotes [Unreleased] → [version] in CHANGELOG.md
 #   4. Commits, creates annotated tag, pushes both
 #      → pushing the tag triggers .github/workflows/publish.yml (PyPI)
@@ -58,6 +58,12 @@ if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
   exit 1
 fi
 
+# Check uv is available (needed to refresh uv.lock after the version bump)
+if ! command -v uv &>/dev/null; then
+  echo "Error: 'uv' not found — install it to update uv.lock"
+  exit 1
+fi
+
 # Check gh CLI is available (needed for GitHub Release)
 if ! command -v gh &>/dev/null; then
   echo "Error: 'gh' CLI not found — install it to create GitHub Releases"
@@ -79,6 +85,11 @@ fi
 echo "  pyproject.toml: $OLD_VERSION → $VERSION"
 sed -i.bak "s/^version = \"$OLD_VERSION\"/version = \"$VERSION\"/" "$PYPROJECT"
 rm -f "$PYPROJECT.bak"
+
+# Keep uv.lock in sync with the new version. Plain `uv lock` (no --upgrade) only
+# updates the project's own version entry; it does not move dependency pins.
+uv lock
+echo "  uv.lock: chunktuner → $VERSION"
 
 # ── 3. Promote [Unreleased] in CHANGELOG.md ───────────────────────────────────
 
@@ -105,7 +116,7 @@ fi
 
 # ── 4. Commit, tag, push ───────────────────────────────────────────────────────
 
-git add "$PYPROJECT" "$CHANGELOG"
+git add "$PYPROJECT" "$CHANGELOG" "$REPO_ROOT/uv.lock"
 git commit -m "chore: bump version to $VERSION"
 echo "  committed version bump"
 
