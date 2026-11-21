@@ -28,7 +28,12 @@ class StructuralSemanticStrategy:
         overlap = int(config.params.get("overlap_tokens", 0))
         coarse = dict(config.params)
         coarse.setdefault("max_region_chars", 8000)
-        regions = self._struct.chunk(doc, ChunkConfig(name="pdf_structural", params=coarse))
+        # PdfStructuralStrategy only accepts pdf/markdown/html; docx/pptx are ingested as
+        # markdown-like text, so hand it a markdown-typed copy (same content -> same offsets).
+        struct_doc = doc
+        if doc.content_type not in self._struct.supported_content_types:
+            struct_doc = doc.model_copy(update={"content_type": "markdown"})
+        regions = self._struct.chunk(struct_doc, ChunkConfig(name="pdf_structural", params=coarse))
         out: list[Chunk] = []
         idx = 0
         for r in regions:

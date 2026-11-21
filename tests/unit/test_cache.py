@@ -71,3 +71,54 @@ def test_cache_closed_on_exception(tmp_db: Path) -> None:
         pass
     with EmbeddingCache(tmp_db, "model") as cache:
         assert _vec_close(cache.get("k") or [], [1.0])
+
+
+def test_embedding_cache_migrates_legacy_schema(tmp_db: Path) -> None:
+    """A pre-0.3 table without ``model`` gains the column; old rows stay readable."""
+    import hashlib
+    import sqlite3
+    import struct
+
+    conn = sqlite3.connect(str(tmp_db))
+    conn.execute(
+        "CREATE TABLE embeddings (k TEXT PRIMARY KEY, dim INTEGER NOT NULL, vec BLOB NOT NULL)"
+    )
+    key = hashlib.sha256(b"old-model|legacy").hexdigest()
+    conn.execute(
+        "INSERT INTO embeddings (k, dim, vec) VALUES (?, ?, ?)",
+        (key, 2, struct.pack("2d", 0.5, 0.25)),
+    )
+    conn.commit()
+    conn.close()
+
+    with EmbeddingCache(tmp_db, "old-model") as cache:
+        cols = {r[1] for r in cache._conn.execute("PRAGMA table_info(embeddings)")}
+        assert "model" in cols
+        assert cache.get("legacy") == [0.5, 0.25]
+        assert cache.stats()["rows"] == 1
+        assert cache.stats("old-model")["rows"] == 0
+        cache.clear("old-model")
+        assert cache.stats()["rows"] == 1
+        cache.clear()
+        assert cache.stats()["rows"] == 0
+
+    # Re-opening an already migrated db must not fail.
+    with EmbeddingCache(tmp_db, "old-model") as cache:
+        assert cache.stats()["rows"] == 0
+
+
+def test_embedding_cache_stats_and_clear_filter_by_model(tmp_db: Path) -> None:
+    with EmbeddingCache(tmp_db, "model-a") as a:
+        a.set("x", [1.0])
+        a.set("y", [2.0])
+    with EmbeddingCache(tmp_db, "model-b") as b:
+        b.set("x", [3.0])
+        assert b.stats() == {"rows": 3, "approx_bytes": 3 * (8 + 32)}  # float64 blobs
+        assert b.stats("model-a")["rows"] == 2
+        assert b.stats("model-b")["rows"] == 1
+        assert b.stats("missing")["rows"] == 0
+        b.clear("model-a")
+        assert b.stats()["rows"] == 1
+        assert b.get("x") == [3.0]
+    with EmbeddingCache(tmp_db, "model-a") as a:
+        assert a.get("x") is None

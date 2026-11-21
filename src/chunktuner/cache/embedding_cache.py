@@ -21,10 +21,15 @@ class EmbeddingCache:
             CREATE TABLE IF NOT EXISTS embeddings (
                 k TEXT PRIMARY KEY,
                 dim INTEGER NOT NULL,
-                vec BLOB NOT NULL
+                vec BLOB NOT NULL,
+                model TEXT
             )
             """
         )
+        # Migrate pre-0.3 tables (no ``model`` column); legacy rows keep ``model`` NULL.
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(embeddings)")}
+        if "model" not in cols:
+            self._conn.execute("ALTER TABLE embeddings ADD COLUMN model TEXT")
         self._conn.commit()
 
     def _key(self, text: str) -> str:
@@ -48,19 +53,29 @@ class EmbeddingCache:
         # change between a cold and a warm cache).
         blob = struct.pack(f"{dim}d", *embedding)
         self._conn.execute(
-            "INSERT OR REPLACE INTO embeddings (k, dim, vec) VALUES (?, ?, ?)",
-            (self._key(text), dim, blob),
+            "INSERT OR REPLACE INTO embeddings (k, dim, vec, model) VALUES (?, ?, ?, ?)",
+            (self._key(text), dim, blob, self.model),
         )
         self._conn.commit()
 
-    def clear(self) -> None:
-        self._conn.execute("DELETE FROM embeddings")
+    def clear(self, model: str | None = None) -> None:
+        """Delete all rows, or only rows written for ``model``.
+
+        Rows from older versions have no recorded model and are only removed by ``clear()``.
+        """
+        if model is None:
+            self._conn.execute("DELETE FROM embeddings")
+        else:
+            self._conn.execute("DELETE FROM embeddings WHERE model = ?", (model,))
         self._conn.commit()
 
-    def stats(self) -> dict:
-        row = self._conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(dim*4+32),0) FROM embeddings"
-        ).fetchone()
+    def stats(self, model: str | None = None) -> dict:
+        """Row count and approximate size for all rows, or only rows written for ``model``."""
+        sql = "SELECT COUNT(*), COALESCE(SUM(LENGTH(vec)+32),0) FROM embeddings"
+        if model is None:
+            row = self._conn.execute(sql).fetchone()
+        else:
+            row = self._conn.execute(sql + " WHERE model = ?", (model,)).fetchone()
         return {"rows": int(row[0] or 0), "approx_bytes": int(row[1] or 0)}
 
     def close(self) -> None:

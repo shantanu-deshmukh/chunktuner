@@ -13,6 +13,11 @@ from chunktuner.config import (
     workspace_cache_dir,
 )
 
+MODEL_FILTER_HELP = (
+    "Only embeddings cached for this model (default: all rows; chunk rows untouched when set). "
+    "Rows written before 0.3 have no model and are only counted/cleared without --model."
+)
+
 
 def register(app: typer.Typer) -> None:
     cache_app = typer.Typer(help="SQLite embedding + chunk caches")
@@ -23,7 +28,7 @@ def register(app: typer.Typer) -> None:
         model: str | None = typer.Option(
             None,
             "--model",
-            help="Embedding model (default: from workspace config)",
+            help=MODEL_FILTER_HELP,
         ),
     ) -> None:
         ws = load_workspace_config(load_workspace_path(config))
@@ -35,7 +40,7 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(0)
         with EmbeddingCache(db, effective_model) as emb, ChunkCache(db) as ch:
             typer.echo(f"Database: {db}")
-            typer.echo(f"Embeddings: {emb.stats()}")
+            typer.echo(f"Embeddings: {emb.stats(model)}")
             typer.echo(f"Chunks: {ch.stats()}")
 
     @cache_app.command("clear")
@@ -44,7 +49,7 @@ def register(app: typer.Typer) -> None:
         model: str | None = typer.Option(
             None,
             "--model",
-            help="Embedding model (default: from workspace config)",
+            help=MODEL_FILTER_HELP,
         ),
     ) -> None:
         ws = load_workspace_config(load_workspace_path(config))
@@ -53,8 +58,12 @@ def register(app: typer.Typer) -> None:
         db = default_embedding_db_path(cache_dir)
         if db.is_file():
             with EmbeddingCache(db, effective_model) as emb, ChunkCache(db) as ch:
-                emb.clear()
-                ch.clear()
+                if model is None:
+                    emb.clear()
+                    ch.clear()
+                else:
+                    # Chunk rows don't depend on the embedding model; leave them.
+                    emb.clear(model)
         typer.echo("Caches cleared.")
 
     app.add_typer(cache_app, name="cache")

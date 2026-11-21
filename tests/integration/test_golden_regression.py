@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import tiktoken
 
-from tests.golden.snapshot import build_snapshot
+from chunktuner.chunking.bootstrap import build_full_registry
+from chunktuner.models import ChunkConfig
+from tests.golden.snapshot import build_snapshot, load_docs
 
 BASELINE = Path(__file__).resolve().parent.parent / "golden" / "baseline.json"
 SCORE_TOL = 1e-9
@@ -40,7 +43,25 @@ def _apply_known_changes(base: dict[str, Any]) -> dict[str, Any]:
     # recorded value is an error. Drop it here (and from the snapshot in _normalize_snapshot);
     # the new value is checked structurally in test_recommend_code_no_longer_errors.
     base["recommend"].pop("code", None)
+    # D21: code_ast now honours merge_small (default grid sets True): Python files are fully
+    # covered and small top-level units merged, so sample.py spans and the code eval entries
+    # change. Dropped from both sides; checked structurally in test_code_ast_merge_small_covers.
+    _drop_d21(base)
     return base
+
+
+def _is_d21_chunk_key(key: str) -> bool:
+    strategy, _, doc = key.split("|")
+    return strategy == "code_ast" and doc == D21_DOC
+
+
+def _drop_d21(data: dict[str, Any]) -> None:
+    data["chunks"] = {k: v for k, v in data["chunks"].items() if not _is_d21_chunk_key(k)}
+    data["eval"] = {k: v for k, v in data["eval"].items() if k.split("|")[1] != "code_ast"}
+
+
+# D21: the Python fixture whose code_ast spans changed (sample.js still uses line windows).
+D21_DOC = "sample.py"
 
 
 def _rename_key(d: dict[str, Any], old: str, new: str) -> dict[str, Any]:
@@ -61,6 +82,8 @@ def _normalize_snapshot(snap: dict[str, Any]) -> dict[str, Any]:
             entry["metrics"].pop(key, None)
     # D20: code recommend is compared structurally, not exactly (see _apply_known_changes).
     snap["recommend"].pop("code", None)
+    # D21: code_ast merge_small — compared structurally (see _apply_known_changes).
+    _drop_d21(snap)
     # D11: new strategy paragraph_group (not in the recorded baseline). Drop its entries;
     # scores are per config (no cross-config normalization), so the remaining recommend rows
     # keep their recorded order and scores. Checked separately in test_paragraph_group_present.
@@ -163,3 +186,31 @@ def test_paragraph_group_present(snapshot: dict) -> None:
     chunk_keys = [k for k in snapshot["chunks"] if k.startswith(f"{NEW_D11}|")]
     eval_keys = [k for k in snapshot["eval"] if k.split("|")[1] == NEW_D11]
     assert chunk_keys and eval_keys
+
+
+def test_code_ast_merge_small_covers(snapshot: dict) -> None:
+    """D21: code_ast default grid (merge_small=True) covers all of sample.py, capped per chunk."""
+    strat = build_full_registry().get("code_ast")
+    if getattr(strat, "_parser", None) is None:
+        pytest.skip("tree-sitter not installed")
+    doc = next(d for d in load_docs() if d.id == D21_DOC)
+    enc = tiktoken.get_encoding("cl100k_base")
+    for i, params in enumerate(strat.default_param_grid()):
+        assert params.get("merge_small") is True
+        key = f"code_ast|{i}|{D21_DOC}"
+        chunks = strat.chunk(doc, ChunkConfig(name="code_ast", params=params))
+        assert [[c.start_offset, c.end_offset] for c in chunks] == snapshot["chunks"][key]["spans"]
+        covered = [False] * len(doc.content)
+        prev_end = 0
+        for c in chunks:
+            assert doc.content[c.start_offset : c.end_offset] == c.text, key
+            assert c.start_offset >= prev_end, f"{key}: overlapping/unordered chunks"
+            prev_end = c.end_offset
+            # Every top-level unit of sample.py fits max_tokens, so no code_window fallback
+            # pieces occur and the cap holds for every chunk.
+            assert len(enc.encode(c.text)) <= params["max_tokens"], key
+            for j in range(c.start_offset, c.end_offset):
+                covered[j] = True
+        missed = "".join(ch for ch, cov in zip(doc.content, covered, strict=True) if not cov)
+        assert not missed.strip(), f"{key}: uncovered code {missed.strip()[:60]!r}"
+        assert "import math" in chunks[0].text, key

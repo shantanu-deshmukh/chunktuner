@@ -114,3 +114,46 @@ def test_estimate_yaml_output(corpus: Path) -> None:
 def test_estimate_rejects_unknown_output_format(corpus: Path) -> None:
     result = runner.invoke(app, ["estimate", str(corpus), "--output-format", "xml"])
     assert result.exit_code != 0
+
+
+def _cache_workspace(tmp_path: Path) -> tuple[Path, Path]:
+    from chunktuner.cache.chunk_cache import ChunkCache
+    from chunktuner.cache.embedding_cache import EmbeddingCache, default_embedding_db_path
+
+    cache_dir = tmp_path / "cache"
+    cfg = tmp_path / ".autochunk.yaml"
+    cfg.write_text(f"cache_dir: {cache_dir}\n")
+    db = default_embedding_db_path(cache_dir)
+    with EmbeddingCache(db, "model-a") as a:
+        a.set("x", [1.0])
+        a.set("y", [2.0])
+    with EmbeddingCache(db, "model-b") as b:
+        b.set("x", [3.0])
+    ChunkCache(db).close()
+    return cfg, db
+
+
+def test_cache_stats_model_filter(tmp_path: Path) -> None:
+    cfg, _ = _cache_workspace(tmp_path)
+    all_rows = runner.invoke(app, ["cache", "stats", "--config", str(cfg)])
+    assert all_rows.exit_code == 0, all_rows.output
+    assert "Embeddings: {'rows': 3," in all_rows.output
+    only_a = runner.invoke(app, ["cache", "stats", "--config", str(cfg), "--model", "model-a"])
+    assert only_a.exit_code == 0, only_a.output
+    assert "Embeddings: {'rows': 2," in only_a.output
+
+
+def test_cache_clear_model_filter(tmp_path: Path) -> None:
+    from chunktuner.cache.embedding_cache import EmbeddingCache
+
+    cfg, db = _cache_workspace(tmp_path)
+    result = runner.invoke(app, ["cache", "clear", "--config", str(cfg), "--model", "model-a"])
+    assert result.exit_code == 0, result.output
+    assert "Caches cleared." in result.output
+    with EmbeddingCache(db, "model-b") as emb:
+        assert emb.stats()["rows"] == 1
+        assert emb.get("x") == [3.0]
+    result = runner.invoke(app, ["cache", "clear", "--config", str(cfg)])
+    assert result.exit_code == 0, result.output
+    with EmbeddingCache(db, "model-b") as emb:
+        assert emb.stats()["rows"] == 0

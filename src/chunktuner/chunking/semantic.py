@@ -56,8 +56,8 @@ class SemanticStrategy:
             overlap=overlap,
         )
         pieces, offsets = out
-        chunks: list[Chunk] = []
-        for idx, (piece, (a, b)) in enumerate(zip(pieces, offsets, strict=True)):
+        spans: list[tuple[int, int]] = []
+        for piece, (a, b) in zip(pieces, offsets, strict=True):
             slice_text = text[a:b]
             if slice_text != piece:
                 raise ValueError(
@@ -65,17 +65,46 @@ class SemanticStrategy:
                     f"expected {piece[:40]!r}, got {slice_text[:40]!r}. "
                     "This is a semchunk bug — please report it."
                 )
-            chunks.append(
-                Chunk.from_document(
-                    doc,
-                    id=f"{doc.id}_sem_{idx}",
-                    start_offset=a,
-                    end_offset=b,
-                    tokens=self._count(slice_text),
-                )
+            spans.append((a, b))
+        min_tokens = max(0, int(config.params.get("min_tokens", 0) or 0))
+        if min_tokens > 0:
+            spans = self._merge_small(text, spans, min_tokens)
+        chunks: list[Chunk] = [
+            Chunk.from_document(
+                doc,
+                id=f"{doc.id}_sem_{idx}",
+                start_offset=a,
+                end_offset=b,
+                tokens=self._count(text[a:b]),
             )
+            for idx, (a, b) in enumerate(spans)
+        ]
         validate_chunk_offsets(doc, chunks)
         return chunks
+
+    def _merge_small(
+        self, text: str, spans: list[tuple[int, int]], min_tokens: int
+    ) -> list[tuple[int, int]]:
+        """Merge spans under ``min_tokens`` into the following span (last one: the previous).
+
+        Merged spans are contiguous source slices ``min(start)..max(end)``, so offsets stay
+        exact even when semchunk produced overlapping spans.
+        """
+        out: list[tuple[int, int]] = []
+        pending: tuple[int, int] | None = None
+        last = len(spans) - 1
+        for i, (a, b) in enumerate(spans):
+            if pending is not None:
+                a, b = min(pending[0], a), max(pending[1], b)
+                pending = None
+            if i < last and self._count(text[a:b]) < min_tokens:
+                pending = (a, b)
+                continue
+            if i == last and out and self._count(text[a:b]) < min_tokens:
+                pa, pb = out.pop()
+                a, b = min(pa, a), max(pb, b)
+            out.append((a, b))
+        return out
 
     def _resolve_overlap(self, params: dict[str, Any], max_tokens: int) -> int | None:
         """Overlap in tokens: ``overlap_tokens`` > ``overlap_ratio`` > ``similarity_threshold``.
@@ -103,7 +132,14 @@ class SemanticStrategy:
     def param_schema(self) -> dict[str, Any]:
         return {
             "max_tokens": {"type": "integer", "minimum": 16},
-            "min_tokens": {"type": "integer", "minimum": 0},
+            "min_tokens": {
+                "type": "integer",
+                "minimum": 0,
+                "description": (
+                    "Merge chunks with fewer tokens into the next chunk (last: previous); "
+                    "0 disables."
+                ),
+            },
             "overlap_tokens": {
                 "type": "integer",
                 "minimum": 0,
