@@ -9,26 +9,34 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from chunktuner.cache.wrapped_embeddings import maybe_cache_embeddings
-from chunktuner.chunking import default_registry
 from chunktuner.cli.common import (
+    CONFIG_HELP,
     DATASET_HELP,
+    DEFAULT_USE_CASE,
     GENERATE_DATASET_HELP,
     NO_CACHE_HELP,
     TOP_K_HELP,
+    USE_CASE_HELP,
     check_dataset_flags,
-    load_workspace_path,
+    check_strategy_names,
+    check_token_budget,
+    ingest_corpus,
+    load_workspace,
+    max_docs_help,
+    registry_for,
     resolve_eval_dataset,
     retrieval_scope_option,
+    select_supported_docs,
+    tokenizer_encoding,
+    ws_setting,
 )
 from chunktuner.config import (
-    load_workspace_config,
     resolve_provider_config,
     workspace_cache_dir,
 )
 from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
-from chunktuner.ingestion.file_ingestor import FileIngestor
 from chunktuner.models import ChunkConfig, RetrievalScope, UseCase
 
 console = Console()
@@ -39,10 +47,10 @@ def register(app: typer.Typer) -> None:
     def compare_cmd(
         path: Path = typer.Argument(..., exists=True),
         strategies: str = typer.Option(..., "--strategies", help="Comma-separated names"),
-        use_case: str = typer.Option("rag_qa", "--use-case"),
-        max_docs: int = typer.Option(15, "--max-docs"),
+        use_case: str | None = typer.Option(None, "--use-case", help=USE_CASE_HELP),
+        max_docs: int | None = typer.Option(None, "--max-docs", help=max_docs_help(15)),
         top_k: int = typer.Option(5, "--top-k", help=TOP_K_HELP),
-        config: Path | None = typer.Option(None, "--config"),
+        config: Path | None = typer.Option(None, "--config", help=CONFIG_HELP),
         report: Path | None = typer.Option(None, "--report", help="Write Markdown report path"),
         embedding_model: str | None = typer.Option(None, "--embedding-model"),
         api_base: str | None = typer.Option(None, "--api-base"),
@@ -60,7 +68,15 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Compare a small set of strategies on the same corpus."""
         check_dataset_flags(dataset, generate_dataset)
-        ws = load_workspace_config(load_workspace_path(config))
+        ws = load_workspace(config)
+        use_case = ws_setting(ws, "use_case", use_case, DEFAULT_USE_CASE)
+        max_docs = ws_setting(ws, "max_docs", max_docs, 15)
+        registry = registry_for(ws)
+        names = [s.strip() for s in strategies.split(",") if s.strip()]
+        if not names:
+            typer.echo("Provide at least one strategy in --strategies", err=True)
+            raise typer.Exit(2)
+        check_strategy_names(names, registry)
         cache_dir = workspace_cache_dir(ws)
         resolved_api_base, resolved_api_key = resolve_provider_config(ws)
         resolved_api_base = api_base or resolved_api_base
@@ -86,10 +102,17 @@ def register(app: typer.Typer) -> None:
             else DummyEmbeddingFunction()
         )
         embed = maybe_cache_embeddings(embed, cache_dir, enabled=not no_cache)
-        root = path.resolve().parent if path.is_file() else path.resolve()
-        fi = FileIngestor(root=root)
-        docs = fi.ingest_path(path) if path.is_file() else fi.ingest_dir(path)
-        docs = docs[:max_docs]
+        docs, root = ingest_corpus(path, ws)
+        docs = select_supported_docs(docs, names, registry, path)[:max_docs]
+        # compare runs only the first config of each strategy's default grid.
+        check_token_budget(
+            ws,
+            docs,
+            names,
+            {n: registry.get(n).default_param_grid()[:1] for n in names},
+            embedding_model=resolved_embedding_model,
+            yes=yes,
+        )
         ds = resolve_eval_dataset(
             docs,
             root=root,
@@ -101,16 +124,13 @@ def register(app: typer.Typer) -> None:
             cache_dir=cache_dir,
             yes=yes,
         )
-        names = [s.strip() for s in strategies.split(",") if s.strip()]
-        if not names:
-            typer.echo("Provide at least one strategy in --strategies", err=True)
-            raise typer.Exit(2)
         scorer = ScoreCalculator(
             cast(UseCase, use_case), retrieval_scope=cast(RetrievalScope, retrieval_scope)
         )
         ev = Evaluator(
             embed,
             top_k=top_k or ws.top_k,
+            encoding_name=tokenizer_encoding(ws),
             llm_answer_model=resolved_llm_model,
             llm_api_base=resolved_api_base,
             llm_api_key=resolved_api_key,
@@ -125,16 +145,7 @@ def register(app: typer.Typer) -> None:
             tid = progress.add_task("Comparing...", total=len(names))
             for n in names:
                 progress.update(tid, description=f"Comparing {n}...")
-                try:
-                    strat = default_registry.get(n)
-                except KeyError:
-                    available = sorted(default_registry.names())
-                    typer.secho(
-                        f"Unknown strategy {n!r}. Available: {available}",
-                        fg=typer.colors.RED,
-                        err=True,
-                    )
-                    raise typer.Exit(2) from None
+                strat = registry.get(n)
                 cfg = ChunkConfig(name=n, params=strat.default_param_grid()[0])
                 res = ev.evaluate(strat, cfg, docs, ds, scorer=scorer)
                 rows.append(

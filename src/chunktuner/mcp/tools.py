@@ -122,8 +122,9 @@ def register_tools(mcp: object) -> None:
     ) -> dict:
         """Dry-run cost estimate or full evaluation (``DummyEmbeddingFunction`` if no model).
 
-        ``content_type`` restricts strategies to those supporting it. The response includes a
-        ``warnings`` list (e.g. when the trivial placeholder dataset is used).
+        ``content_type`` restricts strategies to those supporting it. Documents some selected
+        strategy cannot chunk (e.g. code with text strategies) are skipped. The response includes
+        a ``warnings`` list (e.g. skipped documents, or the trivial placeholder dataset is used).
         """
         t0 = time.perf_counter()
         with _eval_sem:
@@ -164,7 +165,9 @@ def register_tools(mcp: object) -> None:
     ) -> dict:
         """Run tuner and return ranked ``Recommendation`` (uses dummy embeddings by default).
 
-        The response adds a ``warnings`` list (e.g. when the trivial placeholder dataset is used).
+        Documents some selected strategy cannot chunk (e.g. code with text strategies) are
+        skipped. The response adds a ``warnings`` list (e.g. skipped documents, or the trivial
+        placeholder dataset is used).
         """
         t0 = time.perf_counter()
         with _eval_sem:

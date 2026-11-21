@@ -1,6 +1,9 @@
 """Shared CLI helpers."""
 
 import json
+import logging
+import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +12,15 @@ import yaml
 from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
+
+from chunktuner.chunking.registry import StrategyRegistry
+from chunktuner.config import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_TOKENIZER_ENCODING,
+    WorkspaceConfig,
+    load_workspace_config,
+)
+from chunktuner.models import Document
 
 console = Console()
 
@@ -195,3 +207,261 @@ def resolve_eval_dataset(
         return ds
     warn(trivial_dataset_warning("--dataset FILE", "--generate-dataset"))
     return trivial_dataset_for_docs(docs)
+
+
+# ---------------------------------------------------------------------------
+# Workspace (.autochunk.yaml) settings
+# ---------------------------------------------------------------------------
+
+DEFAULT_USE_CASE = "rag_qa"
+USE_CASE_HELP = "Scoring profile (default: use_case in .autochunk.yaml, else rag_qa)"
+CONFIG_HELP = "Path to .autochunk.yaml (default: ./.autochunk.yaml if present)"
+
+
+def max_docs_help(default: int) -> str:
+    return f"Max documents to use (default: max_docs in .autochunk.yaml, else {default})"
+
+
+def ws_setting(ws: WorkspaceConfig, field: str, cli_value: Any, default: Any) -> Any:
+    """Resolve a setting: explicit CLI flag > key written in the yaml > command default.
+
+    A key counts as written only if it is present in the loaded yaml (``model_fields_set``),
+    so the `WorkspaceConfig` field defaults never override a command's own default.
+    """
+    if cli_value is not None:
+        return cli_value
+    if field in ws.model_fields_set:
+        return getattr(ws, field)
+    return default
+
+
+def configure_logging(ws: WorkspaceConfig) -> None:
+    """Apply ``log_level`` from the yaml to the ``chunktuner`` loggers (only when written)."""
+    if "log_level" not in ws.model_fields_set:
+        return
+    level = logging.getLevelName(str(ws.log_level).upper())
+    if not isinstance(level, int):
+        typer.secho(
+            f"Error: invalid log_level {ws.log_level!r} in .autochunk.yaml "
+            "(use DEBUG, INFO, WARNING, ERROR or CRITICAL)",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    root = logging.getLogger()
+    if not root.handlers:
+        # Handler on stderr; third-party loggers keep the root's WARNING level.
+        logging.basicConfig(format="%(levelname)s %(name)s: %(message)s")
+    logging.getLogger("chunktuner").setLevel(level)
+
+
+def load_workspace(config: Path | None) -> WorkspaceConfig:
+    """Load ``.autochunk.yaml`` (``--config`` or cwd) and apply its ``log_level``."""
+    ws = load_workspace_config(load_workspace_path(config))
+    configure_logging(ws)
+    return ws
+
+
+def tokenizer_encoding(ws: WorkspaceConfig) -> str:
+    """``tokenizer_encoding`` from the yaml (validated), else ``cl100k_base``."""
+    enc = ws_setting(ws, "tokenizer_encoding", None, DEFAULT_TOKENIZER_ENCODING)
+    if enc != DEFAULT_TOKENIZER_ENCODING:
+        import tiktoken
+
+        try:
+            tiktoken.get_encoding(enc)
+        except (ValueError, KeyError):
+            typer.secho(
+                f"Error: unknown tokenizer_encoding {enc!r} in .autochunk.yaml "
+                "(any tiktoken encoding, e.g. cl100k_base, o200k_base)",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2) from None
+    return enc
+
+
+def registry_for(ws: WorkspaceConfig) -> StrategyRegistry:
+    """Strategy registry using the workspace tokenizer (shared default registry otherwise)."""
+    enc = tokenizer_encoding(ws)
+    if enc == DEFAULT_TOKENIZER_ENCODING:
+        from chunktuner.chunking import default_registry
+
+        return default_registry
+    from chunktuner.chunking.bootstrap import build_full_registry
+
+    return build_full_registry(enc)
+
+
+def file_ingestor(root: Path, ws: WorkspaceConfig) -> Any:
+    """`FileIngestor` for ``root`` applying the yaml ``strip_patterns`` (validated)."""
+    from chunktuner.ingestion.file_ingestor import FileIngestor
+
+    patterns = list(ws.strip_patterns or [])
+    for pat in patterns:
+        try:
+            re.compile(pat)
+        except re.error as exc:
+            typer.secho(
+                f"Error: invalid strip_patterns regex {pat!r} in .autochunk.yaml: {exc}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2) from None
+    return FileIngestor(root=root, strip_patterns=patterns)
+
+
+def ingest_corpus(path: Path, ws: WorkspaceConfig) -> tuple[list[Document], Path]:
+    """Ingest ``path`` (file or directory) with workspace settings; returns ``(docs, root)``."""
+    root = path.resolve().parent if path.is_file() else path.resolve()
+    fi = file_ingestor(root, ws)
+    docs = fi.ingest_path(path) if path.is_file() else fi.ingest_dir(path)
+    return docs, root
+
+
+def check_strategy_names(names: list[str], registry: StrategyRegistry) -> None:
+    """Exit 2 on an unknown strategy name (same message as ``compare``)."""
+    for n in names:
+        try:
+            registry.get(n)
+        except KeyError:
+            available = sorted(registry.names())
+            typer.secho(
+                f"Unknown strategy {n!r}. Available: {available}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(2) from None
+
+
+# Strategies never suggested for skipped docs (explicit-only fallbacks; see AutoTuner).
+_NO_SUGGEST = frozenset({"late_chunking"})
+
+
+def cli_strategies_hint(names: list[str]) -> str:
+    return "--strategies " + ",".join(names)
+
+
+def filter_supported_docs(
+    docs: list[Document],
+    names: list[str],
+    registry: StrategyRegistry,
+    *,
+    hint: Callable[[list[str]], str] = cli_strategies_hint,
+) -> tuple[list[Document], list[str]]:
+    """Keep docs whose content_type every strategy in ``names`` supports.
+
+    Returns ``(kept, messages)`` with one message per skipped content type, suggesting the
+    registered strategies that do support it. Order of ``docs`` is preserved. Shared by the
+    CLI (``evaluate`` / ``compare`` / ``recommend``) and the MCP service.
+    """
+    supported: set[str] | None = None
+    for n in names:
+        types = set(registry.get(n).supported_content_types)
+        supported = types if supported is None else supported & types
+    if supported is None:
+        return list(docs), []
+    kept = [d for d in docs if d.content_type in supported]
+    skipped: dict[str, int] = {}
+    for d in docs:
+        if d.content_type not in supported:
+            skipped[d.content_type] = skipped.get(d.content_type, 0) + 1
+    messages = []
+    for ct, count in skipped.items():
+        msg = f"Skipped {count} {ct} file(s) not supported by {', '.join(names)}"
+        alternatives = [s for s in registry.names(ct) if s not in _NO_SUGGEST]
+        if alternatives:
+            msg += f"; run with {hint(alternatives)} for {ct}."
+        else:
+            msg += f"; no registered strategy supports {ct}."
+        messages.append(msg)
+    return kept, messages
+
+
+def select_supported_docs(
+    docs: list[Document], names: list[str], registry: StrategyRegistry, path: Path
+) -> list[Document]:
+    """CLI wrapper of `filter_supported_docs`: warn on skips, exit 1 if nothing remains."""
+    if not docs:
+        from chunktuner.ingestion.file_ingestor import FileIngestor
+
+        exts = ", ".join(sorted(FileIngestor.SUPPORTED_EXTENSIONS))
+        typer.secho(
+            f"No supported documents found in {path}.\nSupported extensions: {exts}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    kept, messages = filter_supported_docs(docs, names, registry)
+    if not kept:
+        typer.secho(
+            f"Error: no documents in {path} are supported by {', '.join(names)}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        for m in messages:
+            typer.echo(m, err=True)
+        raise typer.Exit(code=1)
+    for m in messages:
+        warn(m)
+    return kept
+
+
+def check_token_budget(
+    ws: WorkspaceConfig,
+    docs: list[Document],
+    names: list[str],
+    param_grid: dict[str, list[dict]],
+    *,
+    embedding_model: str | None,
+    yes: bool,
+) -> None:
+    """Enforce ``max_tokens_per_run`` (only when written in the yaml).
+
+    Uses the same `CostEstimator` total as ``chunk-tune estimate``. Over the cap: exit 1, or
+    with ``--yes`` warn and continue.
+    """
+    if "max_tokens_per_run" not in ws.model_fields_set:
+        return
+    from chunktuner.eval.cost_estimator import CostEstimator
+
+    est = CostEstimator().estimate(
+        docs, names, param_grid, embedding_model or DEFAULT_EMBEDDING_MODEL
+    )
+    cap = ws.max_tokens_per_run
+    if est.total_tokens <= cap:
+        return
+    msg = (
+        f"estimated {est.total_tokens} embedding tokens exceeds max_tokens_per_run={cap} "
+        "in .autochunk.yaml (see `chunk-tune estimate`)."
+    )
+    if yes:
+        warn(f"{msg} Continuing because --yes was given.")
+        return
+    typer.secho(
+        f"Error: {msg} Reduce --max-docs / --strategies, raise the cap, or pass --yes.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    raise typer.Exit(code=1)
+
+
+def baseline_unsupported(tuner: Any, content_type: str, docs: list[Document]) -> str | None:
+    """Message if the tuner's baseline for ``content_type`` cannot chunk every doc type.
+
+    Only relevant for mixed (all supported) content types, e.g. markdown + pdf with
+    ``structural_semantic``: the ``fixed_tokens`` baseline would fail on the pdf docs.
+    """
+    types = {d.content_type for d in docs}
+    if len(types) <= 1:
+        return None
+    cfg = tuner._baseline_config(content_type)
+    if cfg is None:
+        return None
+    missing = sorted(types - set(tuner.strategies.get(cfg.name).supported_content_types))
+    if not missing:
+        return None
+    return (
+        f"Baseline {cfg.name} skipped: it does not support content_type "
+        f"{', '.join(missing)} present in the corpus."
+    )

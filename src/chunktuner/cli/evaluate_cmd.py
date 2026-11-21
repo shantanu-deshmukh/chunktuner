@@ -7,19 +7,28 @@ import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from chunktuner.cache.wrapped_embeddings import maybe_cache_embeddings
-from chunktuner.chunking import default_registry
 from chunktuner.cli.common import (
+    CONFIG_HELP,
     DATASET_HELP,
+    DEFAULT_USE_CASE,
     GENERATE_DATASET_HELP,
     NO_CACHE_HELP,
     TOP_K_HELP,
+    USE_CASE_HELP,
     check_dataset_flags,
-    load_workspace_path,
+    check_strategy_names,
+    check_token_budget,
+    ingest_corpus,
+    load_workspace,
+    max_docs_help,
+    registry_for,
     resolve_eval_dataset,
     retrieval_scope_option,
+    select_supported_docs,
+    tokenizer_encoding,
+    ws_setting,
 )
 from chunktuner.config import (
-    load_workspace_config,
     resolve_provider_config,
     workspace_cache_dir,
 )
@@ -38,10 +47,10 @@ def register(app: typer.Typer) -> None:
             "fixed_tokens,recursive_character",
             "--strategies",
         ),
-        use_case: str = typer.Option("rag_qa", "--use-case"),
-        max_docs: int = typer.Option(20, "--max-docs"),
+        use_case: str | None = typer.Option(None, "--use-case", help=USE_CASE_HELP),
+        max_docs: int | None = typer.Option(None, "--max-docs", help=max_docs_help(20)),
         top_k: int = typer.Option(5, "--top-k", help=TOP_K_HELP),
-        config: Path | None = typer.Option(None, "--config"),
+        config: Path | None = typer.Option(None, "--config", help=CONFIG_HELP),
         output_format: str = typer.Option("table", "--output-format"),
         embedding_model: str | None = typer.Option(
             None,
@@ -77,7 +86,12 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Evaluate chunking strategies (dummy embeddings by default)."""
         check_dataset_flags(dataset, generate_dataset)
-        ws = load_workspace_config(load_workspace_path(config))
+        ws = load_workspace(config)
+        use_case = ws_setting(ws, "use_case", use_case, DEFAULT_USE_CASE)
+        max_docs = ws_setting(ws, "max_docs", max_docs, 20)
+        registry = registry_for(ws)
+        names = [s.strip() for s in strategies.split(",") if s.strip()]
+        check_strategy_names(names, registry)
         cache_dir = workspace_cache_dir(ws)
         resolved_api_base, resolved_api_key = resolve_provider_config(ws)
         resolved_api_base = api_base or resolved_api_base
@@ -103,9 +117,7 @@ def register(app: typer.Typer) -> None:
             else DummyEmbeddingFunction()
         )
         embed_fn = maybe_cache_embeddings(embed_fn, cache_dir, enabled=not no_cache)
-        root = path.resolve().parent if path.is_file() else path.resolve()
-        fi = FileIngestor(root=root)
-        docs = fi.ingest_path(path) if path.is_file() else fi.ingest_dir(path)
+        docs, root = ingest_corpus(path, ws)
         if not docs:
             exts = ", ".join(sorted(FileIngestor.SUPPORTED_EXTENSIONS))
             typer.secho(
@@ -114,7 +126,15 @@ def register(app: typer.Typer) -> None:
                 err=True,
             )
             raise typer.Exit(code=1)
-        docs = docs[:max_docs]
+        docs = select_supported_docs(docs, names, registry, path)[:max_docs]
+        check_token_budget(
+            ws,
+            docs,
+            names,
+            {n: registry.get(n).default_param_grid() for n in names},
+            embedding_model=resolved_embedding_model,
+            yes=yes,
+        )
         ds = resolve_eval_dataset(
             docs,
             root=root,
@@ -126,20 +146,20 @@ def register(app: typer.Typer) -> None:
             cache_dir=cache_dir,
             yes=yes,
         )
-        names = [s.strip() for s in strategies.split(",") if s.strip()]
         scorer = ScoreCalculator(
             cast(UseCase, use_case), retrieval_scope=cast(RetrievalScope, retrieval_scope)
         )
         ev = Evaluator(
             embed_fn,
             top_k=top_k or ws.top_k,
+            encoding_name=tokenizer_encoding(ws),
             llm_answer_model=resolved_llm_model,
             llm_api_base=resolved_api_base,
             llm_api_key=resolved_api_key,
             retrieval_scope=cast(RetrievalScope, retrieval_scope),
         )
         results = []
-        total_jobs = sum(len(default_registry.get(n).default_param_grid()) for n in names)
+        total_jobs = sum(len(registry.get(n).default_param_grid()) for n in names)
         with Progress(
             SpinnerColumn(),
             TextColumn("{task.description}"),
@@ -147,7 +167,7 @@ def register(app: typer.Typer) -> None:
         ) as progress:
             task_id = progress.add_task("Evaluating...", total=total_jobs)
             for n in names:
-                strat = default_registry.get(n)
+                strat = registry.get(n)
                 for params in strat.default_param_grid():
                     progress.update(task_id, description=f"Evaluating {n} {params!r}...")
                     cfg = ChunkConfig(name=n, params=dict(params))

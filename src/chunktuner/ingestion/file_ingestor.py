@@ -44,8 +44,11 @@ class FileIngestor:
         ".c": "code",
     }
 
-    def __init__(self, root: Path | None = None):
+    def __init__(self, root: Path | None = None, strip_patterns: list[str] | None = None):
+        """``strip_patterns``: regexes removed (MULTILINE) from every document at ingest time,
+        so ``Document.content`` is already the stripped text that chunk offsets refer to."""
         self.root = root.resolve() if root else None
+        self.strip_patterns = list(strip_patterns or [])
 
     def _ensure_under_root(self, path: Path) -> Path:
         path = path.resolve()
@@ -110,7 +113,9 @@ class FileIngestor:
 
     def _ingest_plain(self, path: Path, detected: str) -> Document:
         raw, encoding = self._read_text(path)
-        content = preprocess(raw, "html" if detected == "html" else detected)
+        content = preprocess(
+            raw, "html" if detected == "html" else detected, strip_patterns=self.strip_patterns
+        )
         content_type: ContentType
         if detected == "text":
             content_type = "text"
@@ -145,7 +150,7 @@ class FileIngestor:
         conv = DocumentConverter()
         res = conv.convert(str(path))
         md = res.document.export_to_markdown()
-        content = preprocess(md, "markdown")
+        content = preprocess(md, "markdown", strip_patterns=self.strip_patterns)
         doc_ct: ContentType
         if detected == "pdf":
             doc_ct = "pdf"

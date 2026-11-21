@@ -6,7 +6,12 @@ from pathlib import Path
 import tiktoken
 import typer
 
-from chunktuner.cli.common import validate_output_format
+from chunktuner.cli.common import (
+    CONFIG_HELP,
+    load_workspace,
+    tokenizer_encoding,
+    validate_output_format,
+)
 from chunktuner.ingestion.content_type import detect_content_type
 
 _ANALYZE_DIR_MAX_CHARS = 50_000
@@ -27,9 +32,11 @@ def register(app: typer.Typer) -> None:
             "--output-format",
             help="table | json | yaml",
         ),
+        config: Path | None = typer.Option(None, "--config", help=CONFIG_HELP),
     ) -> None:
         """Quick structural scan (no embeddings)."""
         validate_output_format(output_format)
+        ws = load_workspace(config)
         if path.is_dir():
             typer.echo("Directory analyze: summarizing first matching .md/.txt file", err=True)
             sample = next(
@@ -46,7 +53,7 @@ def register(app: typer.Typer) -> None:
             target = path
 
         ct = content_type or detect_content_type(target, text)
-        enc = tiktoken.get_encoding("cl100k_base")
+        enc = tiktoken.get_encoding(tokenizer_encoding(ws))
         ntok = len(enc.encode(text))
         headers = len(re.findall(r"(?m)^#{1,3}\s+\S", text))
         code_blocks = len(re.findall(r"(?m)^```", text)) // 2

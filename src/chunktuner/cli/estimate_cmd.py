@@ -4,11 +4,18 @@ from pathlib import Path
 
 import typer
 
-from chunktuner.chunking import default_registry
-from chunktuner.cli.common import load_workspace_path, validate_output_format
-from chunktuner.config import DEFAULT_EMBEDDING_MODEL, load_workspace_config
+from chunktuner.cli.common import (
+    CONFIG_HELP,
+    USE_CASE_HELP,
+    ingest_corpus,
+    load_workspace,
+    max_docs_help,
+    registry_for,
+    validate_output_format,
+    ws_setting,
+)
+from chunktuner.config import DEFAULT_EMBEDDING_MODEL
 from chunktuner.eval.cost_estimator import CostEstimator
-from chunktuner.ingestion.file_ingestor import FileIngestor
 
 
 def register(app: typer.Typer) -> None:
@@ -20,9 +27,11 @@ def register(app: typer.Typer) -> None:
             "--strategies",
             help="Comma-separated strategy names",
         ),
-        use_case: str = typer.Option("rag_qa", "--use-case"),
-        max_docs: int = typer.Option(100, "--max-docs"),
-        config: Path | None = typer.Option(None, "--config", help="Path to .autochunk.yaml"),
+        use_case: str | None = typer.Option(
+            None, "--use-case", help=f"{USE_CASE_HELP} (does not affect the estimate)"
+        ),
+        max_docs: int | None = typer.Option(None, "--max-docs", help=max_docs_help(100)),
+        config: Path | None = typer.Option(None, "--config", help=CONFIG_HELP),
         output_format: str = typer.Option("table", "--output-format"),
         generate_dataset: bool = typer.Option(
             False,
@@ -38,15 +47,15 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         """Estimate tokens, cost, and wall time (no API calls)."""
         validate_output_format(output_format)
-        ws = load_workspace_config(load_workspace_path(config))
-        root = path.resolve().parent if path.is_file() else path.resolve()
-        fi = FileIngestor(root=root)
-        docs = fi.ingest_path(path) if path.is_file() else fi.ingest_dir(path)
+        ws = load_workspace(config)
+        max_docs = ws_setting(ws, "max_docs", max_docs, 100)
+        registry = registry_for(ws)
+        docs, _root = ingest_corpus(path, ws)
         docs = docs[:max_docs]
         names = [s.strip() for s in strategies.split(",") if s.strip()]
         param_grid: dict[str, list[dict]] = {}
         for n in names:
-            param_grid[n] = default_registry.get(n).default_param_grid()
+            param_grid[n] = registry.get(n).default_param_grid()
         est = CostEstimator().estimate(
             docs,
             names,

@@ -1,5 +1,6 @@
 """MCP / HTTP shared logic (path validation for corpus ``path`` arguments)."""
 
+import json
 import os
 from pathlib import Path
 from typing import Any, cast
@@ -7,6 +8,8 @@ from typing import Any, cast
 from chunktuner.api.security import require_under_base
 from chunktuner.cache.wrapped_embeddings import maybe_cache_embeddings
 from chunktuner.chunking.bootstrap import build_full_registry
+from chunktuner.chunking.registry import StrategyRegistry
+from chunktuner.cli.common import baseline_unsupported, filter_supported_docs
 from chunktuner.config import (
     DEFAULT_LLM_MODEL,
     WorkspaceConfig,
@@ -109,8 +112,36 @@ def _embedding_fn(embedding_model: str | None, use_cache: bool) -> EmbeddingFunc
     return maybe_cache_embeddings(embed, mcp_cache_dir(), enabled=use_cache)
 
 
-def _ingest(p: Path, max_docs: int, content_type: str | None = None) -> tuple[list[Document], Path]:
-    """Ingest ``p``; with ``content_type``, keep only matching docs (error if none match)."""
+def _mcp_strategies_hint(names: list[str]) -> str:
+    return f"strategies={json.dumps(names)}"
+
+
+def _supported_docs(
+    docs: list[Document], names: list[str], reg: StrategyRegistry
+) -> tuple[list[Document], list[str]]:
+    """Keep docs every strategy in ``names`` supports; skip messages go to ``warnings``."""
+    kept, messages = filter_supported_docs(docs, names, reg, hint=_mcp_strategies_hint)
+    if not kept:
+        detail = " ".join(messages)
+        raise ValueError(
+            f"No documents under path are supported by {', '.join(names)}. {detail}".strip()
+        )
+    return kept, messages
+
+
+def _ingest(
+    p: Path,
+    max_docs: int,
+    content_type: str | None = None,
+    *,
+    names: list[str] | None = None,
+    reg: StrategyRegistry | None = None,
+) -> tuple[list[Document], Path, list[str]]:
+    """Ingest ``p``; with ``content_type``, keep only matching docs (error if none match).
+
+    With ``names``/``reg``, also drop docs some strategy in ``names`` cannot chunk (before
+    the ``max_docs`` cap); the third item holds the skip messages.
+    """
     root = p.parent if p.is_file() else p
     fi = FileIngestor(root=root)
     docs = fi.ingest_path(p) if p.is_file() else fi.ingest_dir(p)
@@ -121,7 +152,10 @@ def _ingest(p: Path, max_docs: int, content_type: str | None = None) -> tuple[li
             raise ValueError(
                 f"No documents with content_type={content_type!r} under path (found: {found})"
             )
-    return docs[:max_docs], root
+    skipped: list[str] = []
+    if names and reg is not None:
+        docs, skipped = _supported_docs(docs, names, reg)
+    return docs[:max_docs], root, skipped
 
 
 def _resolve_dataset(
@@ -221,7 +255,7 @@ def evaluate_chunking_impl(
                 f"Strategies for it: {sorted(allowed)}"
             )
     if dry_run:
-        docs, _root = _ingest(p, max_docs, content_type)
+        docs, _root, skipped = _ingest(p, max_docs, content_type, names=names, reg=reg)
         grid: dict[str, list[dict]] = {n: reg.get(n).default_param_grid() for n in names}
         est = CostEstimator().estimate(
             docs,
@@ -230,10 +264,14 @@ def evaluate_chunking_impl(
             embedding_model or "text-embedding-3-small",
             llm_model=_MCP_LLM_MODEL if generate_dataset else None,
         )
-        return est.model_dump(exclude_none=True)
+        out = est.model_dump(exclude_none=True)
+        if skipped:
+            out["warnings"] = skipped
+        return out
     embed = _embedding_fn(embedding_model, use_cache)
-    docs, root = _ingest(p, max_docs, content_type)
+    docs, root, skipped = _ingest(p, max_docs, content_type, names=names, reg=reg)
     ds, warnings = _resolve_dataset(docs, root, dataset_file, generate_dataset)
+    warnings = skipped + warnings
     scope = cast(RetrievalScope, retrieval_scope)
     ev = Evaluator(
         embed,
@@ -280,14 +318,11 @@ def recommend_config_impl(
     if strategies is not None:
         _validate_strategies(strategies)
     embed = _embedding_fn(embedding_model, use_cache)
-    docs, root = _ingest(p, max_docs)
-    if not docs:
-        raise ValueError("No documents to tune on")
-    ds, warnings = _resolve_dataset(docs, root, dataset_file, generate_dataset)
+    reg = build_full_registry()
     uc = cast(UseCase, use_case)
     scope = cast(RetrievalScope, retrieval_scope)
     tuner = AutoTuner(
-        build_full_registry(),
+        reg,
         Evaluator(
             embed,
             top_k=top_k,
@@ -299,12 +334,29 @@ def recommend_config_impl(
         ScoreCalculator(uc, retrieval_scope=scope),
     )
     strat_names = strategies or ["fixed_tokens", "recursive_character"]
+    # Strategies that actually run: with ``content_type`` the tuner keeps only those supporting
+    # it, and runs just the baseline when none does.
+    run_names = strat_names
+    if content_type is not None:
+        run_names = [n for n in strat_names if n in set(reg.names(content_type))]
+        if not run_names:
+            bl_cfg = tuner._baseline_config(content_type)
+            run_names = [bl_cfg.name] if bl_cfg is not None else []
+    docs, root, skipped = _ingest(p, max_docs, names=run_names, reg=reg)
+    if not docs:
+        raise ValueError("No documents to tune on")
+    ds, warnings = _resolve_dataset(docs, root, dataset_file, generate_dataset)
+    warnings = skipped + warnings
+    ct = content_type or docs[0].content_type
+    bl_msg = baseline_unsupported(tuner, ct, docs)
+    if bl_msg:
+        warnings.append(bl_msg)
     rec = tuner.recommend(
         docs,
         uc,
         strategies=strat_names,
         max_docs=max_docs,
-        baseline=True,
+        baseline=bl_msg is None,
         content_type=content_type,
         dataset=ds,
     )

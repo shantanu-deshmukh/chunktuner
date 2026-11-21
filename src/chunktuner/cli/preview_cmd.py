@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from chunktuner.chunking import default_registry
+from chunktuner.cli.common import CONFIG_HELP, file_ingestor, load_workspace, registry_for
 from chunktuner.models import ChunkConfig, Document
 
 
@@ -20,13 +20,13 @@ def register(app: typer.Typer) -> None:
             help='JSON params object (e.g. {"max_tokens":256})',
         ),
         output_format: str = typer.Option("table", "--output-format"),
+        config: Path | None = typer.Option(None, "--config", help=CONFIG_HELP),
     ) -> None:
         """Chunk a single document and print chunk boundaries (no embeddings)."""
+        ws = load_workspace(config)
         p = Path(target)
         if p.is_file():
-            from chunktuner.ingestion.file_ingestor import FileIngestor
-
-            fi = FileIngestor(root=p.resolve().parent)
+            fi = file_ingestor(p.resolve().parent, ws)
             doc = fi.ingest_path(p)[0]
         else:
             doc = Document(id="preview-inline", content=target, content_type="text")
@@ -37,7 +37,7 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"Invalid --params JSON: {e}", err=True)
             raise typer.Exit(1) from e
 
-        strat = default_registry.get(strategy)
+        strat = registry_for(ws).get(strategy)
         cfg = ChunkConfig(name=strategy, params=params)
         chunks = strat.chunk(doc, cfg)
         rows = [
