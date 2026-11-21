@@ -1,7 +1,5 @@
 """Grid search over strategies and configs."""
 
-from __future__ import annotations
-
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 

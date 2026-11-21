@@ -1,7 +1,5 @@
 """Dry-run cost and runtime estimates (no API calls)."""
 
-from __future__ import annotations
-
 import logging
 
 from chunktuner.config import THROUGHPUT_API_TOKENS_PER_MIN

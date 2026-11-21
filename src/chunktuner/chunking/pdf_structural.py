@@ -1,7 +1,5 @@
 """Layout-inspired splits for PDF-derived markdown (``## Page N`` markers optional)."""
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

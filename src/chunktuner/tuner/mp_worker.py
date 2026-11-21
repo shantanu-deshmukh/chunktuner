@@ -1,7 +1,5 @@
 """Picklable entry point for ``ProcessPoolExecutor`` evaluation."""
 
-from __future__ import annotations
-
 
 def mp_evaluate_task(task: dict) -> dict:
     from pathlib import Path

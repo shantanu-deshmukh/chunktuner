@@ -1,7 +1,5 @@
 """LLM-proposed chunk boundaries (expensive; opt-in via strategy selection)."""
 
-from __future__ import annotations
-
 import json
 import logging
 import uuid

@@ -1,7 +1,5 @@
 """Construct a ``StrategyRegistry`` with all built-in strategies (best-effort optional deps)."""
 
-from __future__ import annotations
-
 import logging
 
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy

@@ -1,7 +1,5 @@
 """Typer CLI entrypoint: ``chunk-tune``."""
 
-from __future__ import annotations
-
 import sys
 
 import typer

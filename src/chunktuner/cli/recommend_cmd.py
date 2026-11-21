@@ -1,7 +1,5 @@
 """``chunk-tune recommend`` — full grid + best config."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import cast
 

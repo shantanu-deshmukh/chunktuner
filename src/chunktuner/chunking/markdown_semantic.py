@@ -1,7 +1,5 @@
 """Markdown: split on headings, then ``semchunk`` within large sections."""
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

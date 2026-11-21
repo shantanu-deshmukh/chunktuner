@@ -1,7 +1,5 @@
 """FastMCP entrypoint: ``chunk-tune-mcp`` (stdio)."""
 
-from __future__ import annotations
-
 import logging
 import sys
 from typing import TYPE_CHECKING
@@ -10,7 +8,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
 
-def create_mcp_app() -> FastMCP:
+def create_mcp_app() -> "FastMCP":
     """Build the FastMCP app (tools, resources, prompts). Used by stdio ``run()`` and tests."""
     from mcp.server.fastmcp import FastMCP
 

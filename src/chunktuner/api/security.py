@@ -1,7 +1,5 @@
 """Validate user-supplied corpus paths against ``CHUNK_TUNER_BASE_DIR``."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

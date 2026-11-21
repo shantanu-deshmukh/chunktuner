@@ -1,7 +1,5 @@
 """Chunk offset invariants against document content."""
 
-from __future__ import annotations
-
 import os
 
 from chunktuner.models import Chunk, Document

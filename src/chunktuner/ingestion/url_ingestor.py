@@ -1,7 +1,5 @@
 """Fetch remote URLs into ``Document`` objects."""
 
-from __future__ import annotations
-
 import ipaddress
 import socket
 import uuid

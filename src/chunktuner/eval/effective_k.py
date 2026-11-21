@@ -1,7 +1,5 @@
 """Equal context budgeting for retrieval depth."""
 
-from __future__ import annotations
-
 
 def compute_effective_k(
     avg_chunk_tokens: float,

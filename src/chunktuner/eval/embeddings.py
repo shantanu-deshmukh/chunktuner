@@ -1,7 +1,5 @@
 """Embedding backends — dummy for tests, LiteLLM for live runs."""
 
-from __future__ import annotations
-
 import hashlib
 from typing import Any
 

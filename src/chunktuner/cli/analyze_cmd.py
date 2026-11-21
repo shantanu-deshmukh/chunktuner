@@ -1,7 +1,5 @@
 """``chunk-tune analyze`` — structural scan without API calls."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

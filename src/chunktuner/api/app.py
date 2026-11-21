@@ -1,7 +1,5 @@
 """FastAPI application factory (routes + optional middleware)."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI
 
 from chunktuner.api.auth import TokenAuthMiddleware

@@ -1,7 +1,5 @@
 """Minimal eval datasets without LLM calls (Phase 1)."""
 
-from __future__ import annotations
-
 from chunktuner.models import Document, EvalDataset, EvalQuery
 
 

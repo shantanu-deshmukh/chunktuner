@@ -1,11 +1,10 @@
 """SQLite-backed embedding cache (SHA256 key)."""
 
-from __future__ import annotations
-
 import hashlib
 import sqlite3
 import struct
 from pathlib import Path
+from typing import Self
 
 
 class EmbeddingCache:
@@ -67,7 +66,7 @@ class EmbeddingCache:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> EmbeddingCache:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:

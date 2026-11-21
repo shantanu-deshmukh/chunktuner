@@ -1,7 +1,5 @@
 """Read-only MCP resources (documentation URIs)."""
 
-from __future__ import annotations
-
 _OVERVIEW = """# chunktuner
 
 Auto chunking tuner for RAG pipelines. Ingests text-heavy corpora, benchmarks chunking

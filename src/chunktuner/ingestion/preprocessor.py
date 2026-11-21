@@ -1,7 +1,5 @@
 """Normalize and lightly clean document text before chunking."""
 
-from __future__ import annotations
-
 import re
 
 

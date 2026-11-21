@@ -1,7 +1,5 @@
 """FastAPI routes mirroring MCP tool contracts."""
 
-from __future__ import annotations
-
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException

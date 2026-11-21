@@ -1,7 +1,5 @@
 """Content-type detection from path and optional text sample."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

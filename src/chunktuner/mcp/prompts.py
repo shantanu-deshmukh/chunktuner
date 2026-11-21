@@ -1,7 +1,5 @@
 """MCP prompt templates."""
 
-from __future__ import annotations
-
 
 def register_prompts(mcp: object) -> None:
     from mcp.server.fastmcp import FastMCP

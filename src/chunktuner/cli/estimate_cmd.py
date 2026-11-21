@@ -1,7 +1,5 @@
 """``chunk-tune estimate`` — dry-run cost estimate."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import typer

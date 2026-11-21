@@ -1,7 +1,5 @@
 """Weighted scalar score from ``EvalMetrics`` for a use case."""
 
-from __future__ import annotations
-
 from chunktuner.config import score_profile_weights
 from chunktuner.models import EvalMetrics, RetrievalScope
 

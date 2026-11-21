@@ -1,7 +1,5 @@
 """Structural regions then token-sized windows (pdf/docx/pptx markdown)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import tiktoken

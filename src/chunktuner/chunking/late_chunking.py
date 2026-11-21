@@ -5,8 +5,6 @@ forward pass), so it cannot be expressed as a pure text splitter. This strategy 
 from default all-strategy tuner runs and must be requested explicitly.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy

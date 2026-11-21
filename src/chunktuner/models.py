@@ -1,8 +1,6 @@
 """Domain models — single source of truth for library, CLI, and API."""
 
-from __future__ import annotations
-
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -42,7 +40,7 @@ class Chunk(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _check_offsets(self) -> Chunk:
+    def _check_offsets(self) -> Self:
         if self.start_offset < 0:
             raise ValueError(f"start_offset must be >= 0, got {self.start_offset}")
         if self.end_offset <= self.start_offset:
@@ -60,7 +58,7 @@ class Chunk(BaseModel):
         start_offset: int,
         end_offset: int,
         **kwargs: Any,
-    ) -> Chunk:
+    ) -> Self:
         """Build a chunk from ``doc`` slices; ``text`` is always ``doc.content[start:end]``."""
         n = len(doc.content)
         if not (0 <= start_offset < end_offset <= n):

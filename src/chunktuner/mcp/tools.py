@@ -1,7 +1,5 @@
 """FastMCP tool registrations (stdio-safe logging to stderr only)."""
 
-from __future__ import annotations
-
 import logging
 import time
 from threading import BoundedSemaphore

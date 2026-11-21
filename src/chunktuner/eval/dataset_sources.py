@@ -1,7 +1,5 @@
 """Resolve the eval dataset for CLI / MCP runs: user file, cached LLM generation, or trivial."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging

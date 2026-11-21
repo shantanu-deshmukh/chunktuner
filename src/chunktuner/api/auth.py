@@ -1,7 +1,5 @@
 """Optional HTTP API authentication."""
 
-from __future__ import annotations
-
 import os
 
 from starlette.middleware.base import BaseHTTPMiddleware

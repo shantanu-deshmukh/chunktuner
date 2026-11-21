@@ -1,7 +1,5 @@
 """Recursive character splitting with overlap (LangChain-style)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import tiktoken

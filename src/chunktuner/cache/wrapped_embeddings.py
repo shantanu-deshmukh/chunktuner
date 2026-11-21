@@ -1,7 +1,5 @@
 """Wrap an ``EmbeddingFunction`` with SQLite caching."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 from chunktuner.cache.embedding_cache import EmbeddingCache, default_embedding_db_path

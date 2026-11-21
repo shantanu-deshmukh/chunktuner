@@ -1,7 +1,5 @@
 """AST-aware chunks for Python (``tree-sitter`` optional extra)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import tiktoken

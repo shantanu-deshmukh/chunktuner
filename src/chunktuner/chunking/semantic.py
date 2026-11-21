@@ -1,7 +1,5 @@
 """Semantic-ish chunking via ``semchunk`` (optional extra ``chunktuner[semantic]``)."""
 
-from __future__ import annotations
-
 import logging
 import warnings
 from typing import Any

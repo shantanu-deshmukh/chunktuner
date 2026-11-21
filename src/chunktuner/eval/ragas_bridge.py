@@ -1,7 +1,5 @@
 """RAGAS Faithfulness + Answer Relevancy (optional ``chunktuner[ragas]`` + compatible stack)."""
 
-from __future__ import annotations
-
 import logging
 import os
 

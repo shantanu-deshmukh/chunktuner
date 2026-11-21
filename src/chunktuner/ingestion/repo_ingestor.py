@@ -1,7 +1,5 @@
 """Walk a repository tree into per-file ``Document`` records."""
 
-from __future__ import annotations
-
 import uuid
 from pathlib import Path
 

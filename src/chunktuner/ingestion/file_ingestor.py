@@ -1,7 +1,5 @@
 """Load documents from filesystem paths."""
 
-from __future__ import annotations
-
 import logging
 import uuid
 from pathlib import Path

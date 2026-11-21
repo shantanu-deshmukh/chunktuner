@@ -1,6 +1,6 @@
 """Registry of chunking strategies."""
 
-from __future__ import annotations
+import builtins
 
 from chunktuner.models import ChunkingStrategy
 
@@ -23,5 +23,6 @@ class StrategyRegistry:
             return strategies
         return [s for s in strategies if content_type in s.supported_content_types]
 
-    def names(self, content_type: str | None = None) -> list[str]:
+    # ``builtins.list``: the ``list`` method above shadows the builtin in this class body.
+    def names(self, content_type: str | None = None) -> builtins.list[str]:
         return [s.name for s in self.list(content_type)]

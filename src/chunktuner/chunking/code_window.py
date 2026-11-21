@@ -1,7 +1,5 @@
 """Line-respecting sliding windows for code documents."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import tiktoken

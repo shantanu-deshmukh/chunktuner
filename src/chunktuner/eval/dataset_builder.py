@@ -1,7 +1,5 @@
 """Build ``EvalDataset`` from LLM outputs or user JSON/YAML files."""
 
-from __future__ import annotations
-
 import json
 import logging
 import random

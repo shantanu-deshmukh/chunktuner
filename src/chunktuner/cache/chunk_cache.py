@@ -1,11 +1,10 @@
 """SQLite-backed chunking result cache."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import sqlite3
 from pathlib import Path
+from typing import Self
 
 from chunktuner.models import Chunk, ChunkConfig, Document
 
@@ -65,7 +64,7 @@ class ChunkCache:
     def close(self) -> None:
         self._conn.close()
 
-    def __enter__(self) -> ChunkCache:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:
