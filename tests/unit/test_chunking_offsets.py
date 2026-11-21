@@ -79,6 +79,37 @@ def test_offset_invariant_core_strategies(strategy_name: str, label: str, text: 
         )
 
 
+# Tokens that split a multibyte character used to raise "Token decode length mismatch".
+MULTIBYTE_CASES = [
+    ("japanese", "Über naïve 東京 データ " * 40),
+    ("emoji zwj", "Hello 🌍! 🧪👩‍🔬 test. 🚀 " * 40),
+]
+
+
+@pytest.mark.parametrize("max_tokens", [1, 7, 512])
+@pytest.mark.parametrize("label,text", MULTIBYTE_CASES)
+def test_fixed_tokens_multibyte_offsets_and_coverage(
+    label: str, text: str, max_tokens: int
+) -> None:
+    doc = Document(id="mb", content=text, content_type="text")
+    cfg = ChunkConfig(name="fixed_tokens", params={"max_tokens": max_tokens, "overlap_tokens": 0})
+    chunks = FixedTokenStrategy().chunk(doc, cfg)
+    _assert_offsets(doc, chunks)
+    # No overlap: chunks are contiguous and cover the whole document.
+    assert chunks[0].start_offset == 0 and chunks[-1].end_offset == len(text), label
+    for a, b in zip(chunks, chunks[1:], strict=False):
+        assert a.end_offset == b.start_offset, label
+
+
+@pytest.mark.parametrize("strategy_name", ["late_chunking", "paragraph_group"])
+@pytest.mark.parametrize("label,text", MULTIBYTE_CASES)
+def test_token_based_strategies_multibyte(strategy_name: str, label: str, text: str) -> None:
+    strategy = _strategy(strategy_name)
+    doc = Document(id="mb", content=text, content_type="text")
+    params = {"max_tokens": 16}
+    _assert_offsets(doc, strategy.chunk(doc, ChunkConfig(name=strategy_name, params=params)))
+
+
 @pytest.mark.parametrize("label,text", TEXT_CASES_RECURSIVE_ONLY)
 def test_offset_invariant_recursive_emoji_ok(label: str, text: str) -> None:
     strategy = _strategy("recursive_character")

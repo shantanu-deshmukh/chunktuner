@@ -14,8 +14,9 @@ def build_full_registry(encoding: str = "cl100k_base") -> StrategyRegistry:
     reg.register(FixedTokenStrategy(encoding_name=encoding))
     reg.register(RecursiveCharacterStrategy(encoding_name=encoding))
     try:
-        from chunktuner.chunking.semantic import SemanticStrategy
+        from chunktuner.chunking.semantic import SemanticStrategy, _require_semchunk
 
+        _require_semchunk()  # semchunk is imported lazily; fail here so it is not registered
         reg.register(SemanticStrategy(encoding_name=encoding))
     except ImportError as e:
         _log.debug("Strategy %r unavailable (missing dep): %s", "semantic", e)

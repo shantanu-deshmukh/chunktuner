@@ -145,9 +145,9 @@ def _embedding_cost_usd(model: str, tokens: int) -> float:
         from litellm import model_cost
 
         info = model_cost.get(model, {})
-        p1k = float(info.get("input_cost_per_token", 0) or 0) * 1000
-        if p1k > 0:
-            return (tokens / 1000.0) * (p1k / 1000.0)
+        per_token = float(info.get("input_cost_per_token", 0) or 0)
+        if per_token > 0:
+            return tokens * per_token
     except Exception:
         pass
     return (tokens / 1_000_000.0) * 0.02
