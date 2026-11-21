@@ -3,6 +3,7 @@
 import logging
 
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy
+from chunktuner.chunking.paragraph_group import ParagraphGroupStrategy
 from chunktuner.chunking.recursive_character import RecursiveCharacterStrategy
 from chunktuner.chunking.registry import StrategyRegistry
 
@@ -13,6 +14,7 @@ def build_full_registry(encoding: str = "cl100k_base") -> StrategyRegistry:
     reg = StrategyRegistry()
     reg.register(FixedTokenStrategy(encoding_name=encoding))
     reg.register(RecursiveCharacterStrategy(encoding_name=encoding))
+    reg.register(ParagraphGroupStrategy(encoding_name=encoding))
     try:
         from chunktuner.chunking.semantic import SemanticStrategy, _require_semchunk
 

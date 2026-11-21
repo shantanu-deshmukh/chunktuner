@@ -22,6 +22,7 @@
     * [chunking](api/chunking.md)
         * [fixed_tokens](api/chunking/fixed_tokens.md)
         * [recursive_character](api/chunking/recursive_character.md)
+        * [paragraph_group](api/chunking/paragraph_group.md)
         * [semantic](api/chunking/semantic.md)
         * [markdown_semantic](api/chunking/markdown_semantic.md)
         * [pdf_structural](api/chunking/pdf_structural.md)

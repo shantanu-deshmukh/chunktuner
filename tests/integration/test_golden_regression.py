@@ -61,7 +61,22 @@ def _normalize_snapshot(snap: dict[str, Any]) -> dict[str, Any]:
             entry["metrics"].pop(key, None)
     # D20: code recommend is compared structurally, not exactly (see _apply_known_changes).
     snap["recommend"].pop("code", None)
+    # D11: new strategy paragraph_group (not in the recorded baseline). Drop its entries;
+    # scores are per config (no cross-config normalization), so the remaining recommend rows
+    # keep their recorded order and scores. Checked separately in test_paragraph_group_present.
+    snap["registered_strategies"] = [s for s in snap["registered_strategies"] if s != NEW_D11]
+    for ct, names in snap["registry_names_by_ct"].items():
+        snap["registry_names_by_ct"][ct] = [n for n in names if n != NEW_D11]
+    snap["chunks"] = {k: v for k, v in snap["chunks"].items() if k.split("|")[0] != NEW_D11}
+    snap["eval"] = {k: v for k, v in snap["eval"].items() if k.split("|")[1] != NEW_D11}
+    for ct, ranked in snap["recommend"].items():
+        if isinstance(ranked, list):
+            snap["recommend"][ct] = [r for r in ranked if r["strategy"] != NEW_D11]
     return snap
+
+
+# D11: strategy added after the baseline was recorded.
+NEW_D11 = "paragraph_group"
 
 
 def _assert_close(expected: Any, actual: Any, path: str) -> None:
@@ -94,7 +109,15 @@ def baseline() -> dict[str, Any]:
 
 @pytest.mark.parametrize(
     "section",
-    ["registered_strategies", "docs", "chunks", "eval", "recommend", "trivial_dataset"],
+    [
+        "registered_strategies",
+        "registry_names_by_ct",
+        "docs",
+        "chunks",
+        "eval",
+        "recommend",
+        "trivial_dataset",
+    ],
 )
 def test_matches_baseline(section: str, snapshot: dict, baseline: dict) -> None:
     if section == "registered_strategies":
@@ -128,3 +151,15 @@ def test_recommend_code_no_longer_errors(snapshot: dict) -> None:
     assert {"strategy": "code_window", "params": {"max_tokens": 512, "overlap_lines": 0}} in rows
     scores = [r["score"] for r in ranked]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_paragraph_group_present(snapshot: dict) -> None:
+    """D11: paragraph_group is registered for prose types and in every prose recommend run."""
+    assert NEW_D11 in snapshot["registered_strategies"]
+    for ct in ("text", "markdown", "html"):
+        assert NEW_D11 in snapshot["registry_names_by_ct"][ct], ct
+        rows = [r for r in snapshot["recommend"][ct] if r["strategy"] == NEW_D11]
+        assert len(rows) == 6, ct
+    chunk_keys = [k for k in snapshot["chunks"] if k.startswith(f"{NEW_D11}|")]
+    eval_keys = [k for k in snapshot["eval"] if k.split("|")[1] == NEW_D11]
+    assert chunk_keys and eval_keys

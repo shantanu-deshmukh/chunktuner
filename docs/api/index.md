@@ -6,6 +6,7 @@ Module-level API generated from docstrings. For usage patterns, see [Python API]
 - [`chunktuner.chunking`](chunking.md)
 - [`chunktuner.chunking.fixed_tokens`](chunking/fixed_tokens.md)
 - [`chunktuner.chunking.recursive_character`](chunking/recursive_character.md)
+- [`chunktuner.chunking.paragraph_group`](chunking/paragraph_group.md)
 - [`chunktuner.chunking.semantic`](chunking/semantic.md)
 - [`chunktuner.chunking.markdown_semantic`](chunking/markdown_semantic.md)
 - [`chunktuner.chunking.pdf_structural`](chunking/pdf_structural.md)

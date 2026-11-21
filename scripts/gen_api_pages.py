@@ -24,6 +24,7 @@ PUBLIC_MODULES = [
     ("chunking", "src/chunktuner/chunking/__init__.py"),
     ("chunking.fixed_tokens", "src/chunktuner/chunking/fixed_tokens.py"),
     ("chunking.recursive_character", "src/chunktuner/chunking/recursive_character.py"),
+    ("chunking.paragraph_group", "src/chunktuner/chunking/paragraph_group.py"),
     ("chunking.semantic", "src/chunktuner/chunking/semantic.py"),
     ("chunking.markdown_semantic", "src/chunktuner/chunking/markdown_semantic.py"),
     ("chunking.pdf_structural", "src/chunktuner/chunking/pdf_structural.py"),
