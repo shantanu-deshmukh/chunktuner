@@ -380,3 +380,96 @@ def test_unknown_strategy_exits_2(mixed: Path) -> None:
     res = _run("evaluate", str(mixed), "--strategies", "nope")
     assert res.exit_code == 2
     assert "Unknown strategy 'nope'" in res.stderr
+
+
+# ---------------------------------------------------------------------------
+# estimate: same doc selection as evaluate, workspace tokenizer
+# ---------------------------------------------------------------------------
+
+
+def _estimate_json(*args: str) -> dict:
+    res = _run("estimate", *args, "--output-format", "json")
+    assert res.exit_code == 0, res.output
+    return json.loads(res.stdout)
+
+
+def test_estimate_mixed_folder_skips_unsupported_with_warning(mixed: Path) -> None:
+    res = _run("estimate", str(mixed), "--output-format", "json")
+    assert res.exit_code == 0, res.output
+    assert "Skipped 1 code file(s) not supported by fixed_tokens, recursive_character" in (
+        res.stderr
+    )
+    assert "--strategies code_ast,code_window" in res.stderr
+    # Same numbers as estimating the markdown file alone.
+    assert json.loads(res.stdout) == _estimate_json(str(mixed / "guide.md"))
+
+
+def test_estimate_max_docs_applied_after_filtering(mixed: Path) -> None:
+    # tool.py would be the only doc if --max-docs were applied before skipping code.
+    (mixed / "a_tool.py").write_text("def g():\n    return 2\n", encoding="utf-8")
+    est = _estimate_json(str(mixed), "--max-docs", "1")
+    assert est == _estimate_json(str(mixed / "guide.md"))
+
+
+def test_estimate_only_code_exits_1_with_hint(tmp_path: Path) -> None:
+    corpus = tmp_path / "code"
+    corpus.mkdir()
+    (corpus / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    res = _run("estimate", str(corpus))
+    assert res.exit_code == 1
+    assert "no documents" in res.stderr
+    assert "--strategies code_ast,code_window" in res.stderr
+    ok = _run("estimate", str(corpus), "--strategies", "code_window")
+    assert ok.exit_code == 0, ok.output
+    assert "Skipped" not in ok.stderr
+
+
+def test_estimate_unknown_strategy_exits_2(mixed: Path) -> None:
+    res = _run("estimate", str(mixed), "--strategies", "nope")
+    assert res.exit_code == 2
+    assert "Unknown strategy 'nope'" in res.stderr
+
+
+def test_estimate_uses_tokenizer_encoding(tmp_path: Path) -> None:
+    doc = tmp_path / "a.txt"
+    # Large enough that the doc-token floor dominates; o200k_base needs fewer tokens here.
+    doc.write_text("Bonjour le monde, comment allez-vous aujourd hui? " * 2000, encoding="utf-8")
+    cfg = _cfg(tmp_path, tokenizer_encoding="o200k_base")
+    default = _estimate_json(str(doc))
+    o200k = _estimate_json(str(doc), "--config", str(cfg))
+    assert o200k["total_tokens"] < default["total_tokens"]
+
+
+def test_token_budget_uses_tokenizer_encoding(tmp_path: Path) -> None:
+    doc = tmp_path / "a.txt"
+    doc.write_text("Bonjour le monde, comment allez-vous aujourd hui? " * 2000, encoding="utf-8")
+    cl100k = _estimate_json(str(doc), "--strategies", "fixed_tokens")["total_tokens"]
+    o200k_cfg = _cfg(tmp_path, tokenizer_encoding="o200k_base")
+    o200k = _estimate_json(str(doc), "--strategies", "fixed_tokens", "--config", str(o200k_cfg))
+    o200k = o200k["total_tokens"]
+    assert o200k < cl100k
+    # Cap between the two totals: passes only if the budget check counts with o200k_base.
+    cfg = _cfg(tmp_path, tokenizer_encoding="o200k_base", max_tokens_per_run=(o200k + cl100k) // 2)
+    res = _run("evaluate", str(doc), "--config", str(cfg), "--strategies", "fixed_tokens")
+    assert res.exit_code == 0, res.output
+
+
+def test_recommend_passes_tokenizer_encoding_to_tuner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from chunktuner.tuner.auto_tuner import AutoTuner
+
+    seen: list[str] = []
+    real = AutoTuner.recommend
+
+    def spy_recommend(self, *a, **k):  # type: ignore[no-untyped-def]
+        seen.append(self.encoding_name)
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(AutoTuner, "recommend", spy_recommend)
+    corpus = tmp_path / "c"
+    _write_docs(corpus, 1)
+    cfg = _cfg(tmp_path, tokenizer_encoding="o200k_base")
+    res = _run("recommend", str(corpus), "--config", str(cfg), "--strategies", "fixed_tokens")
+    assert res.exit_code == 0, res.output
+    assert seen == ["o200k_base"]

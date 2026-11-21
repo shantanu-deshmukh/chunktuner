@@ -1,7 +1,5 @@
 """End-to-end recommend with dummy embeddings."""
 
-from __future__ import annotations
-
 import pytest
 
 from chunktuner.chunking import default_registry

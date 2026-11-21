@@ -1,7 +1,5 @@
 """FastAPI route smoke tests (no external API calls)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

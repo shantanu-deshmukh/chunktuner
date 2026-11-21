@@ -147,7 +147,7 @@ uv run python run_benchmark.py --fixture --num-transcripts 2
 | `pdf_structural`      | PDFs with layout regions and tables   |
 | `structural_semantic` | PDF/DOCX with mixed layout and text   |
 | `late_chunking`       | Fixed-token fallback; true late chunking not implemented (explicit only) |
-| `agentic`             | High-value narrative documents        |
+| `agentic`             | High-value narrative documents (explicit only; LLM cost) |
 | `code_ast`            | Code repos (Python; other languages fall back to line windows) |
 | `code_window`         | Code baseline (sliding window)        |
 

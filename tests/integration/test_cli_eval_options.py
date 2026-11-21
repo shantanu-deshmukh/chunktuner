@@ -3,8 +3,6 @@
 No real API calls: litellm.completion / litellm.embedding are monkeypatched.
 """
 
-from __future__ import annotations
-
 import json
 import re
 from pathlib import Path

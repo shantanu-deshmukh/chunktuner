@@ -1,7 +1,5 @@
 """Chunk.from_document factory (B4-2)."""
 
-from __future__ import annotations
-
 import pytest
 
 from chunktuner.models import Chunk, Document

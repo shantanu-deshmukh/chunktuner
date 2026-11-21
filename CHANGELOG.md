@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `AutoTuner.recommend()` without an explicit strategy list no longer runs `agentic`
+  (it calls an LLM); like `late_chunking`, it runs only when named. The CLI and MCP defaults
+  are unchanged.
+- `estimate` skips documents the selected strategies cannot chunk, with the same warning as
+  `evaluate`, and exits 1 if none remain (it used to count them, or print a zero estimate).
 - `AutoTuner.recommend()` without an explicit strategy list now also tries `paragraph_group`
   on text, Markdown and HTML, so its recommendation can change. The CLI and MCP defaults
   (`fixed_tokens`, `recursive_character`) are unchanged.
@@ -38,6 +43,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `estimate`, the `max_tokens_per_run` check and parallel tuner workers ignored
+  `tokenizer_encoding` and always counted with `cl100k_base`.
+- `estimate` crashed on unknown strategy names; it now exits with an error message.
 - `estimate` under-reported embedding cost 1000× for models priced in litellm's model table
   (for example, 0.0 instead of 0.0004 USD for the test fixtures).
 - On installs without the `semantic` extra, `semantic` was still registered, so

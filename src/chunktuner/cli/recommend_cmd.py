@@ -154,6 +154,7 @@ def register(app: typer.Typer) -> None:
             api_key=resolved_api_key,
             cache_dir=cache_dir,
             yes=yes,
+            encoding_name=tokenizer_encoding(ws),
         )
         scorer = ScoreCalculator(
             cast(UseCase, use_case), retrieval_scope=cast(RetrievalScope, retrieval_scope)
@@ -167,7 +168,7 @@ def register(app: typer.Typer) -> None:
             llm_api_key=resolved_api_key,
             retrieval_scope=cast(RetrievalScope, retrieval_scope),
         )
-        tuner = AutoTuner(registry, ev, scorer)
+        tuner = AutoTuner(registry, ev, scorer, encoding_name=tokenizer_encoding(ws))
         # Every remaining doc is supported by every strategy in ``names``; the tuner's
         # content type (strategy selection, baseline, Recommendation.content_type) is the
         # first remaining doc's, as before. Mixed supported types (e.g. markdown + text)

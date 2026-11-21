@@ -1,7 +1,5 @@
 """CostEstimator dry-run structure."""
 
-from __future__ import annotations
-
 from chunktuner.eval.cost_estimator import CostEstimator
 from chunktuner.models import Document
 
@@ -43,3 +41,37 @@ def test_embedding_cost_fallback_price_for_unknown_model() -> None:
     from chunktuner.eval import cost_estimator
 
     assert cost_estimator._embedding_cost_usd("no-such-model-xyz", 1_000_000) == 0.02
+
+
+_FRENCH = "Bonjour le monde, comment allez-vous aujourd hui? " * 2000
+
+
+def _est(est: CostEstimator, **kw):  # type: ignore[no-untyped-def]
+    docs = [Document(id="d1", content=_FRENCH, content_type="text")]
+    return est.estimate(docs, ["fixed_tokens"], {}, "text-embedding-3-small", **kw)
+
+
+def test_default_encoding_is_cl100k_base() -> None:
+    assert CostEstimator().encoding_name == "cl100k_base"
+    assert _est(CostEstimator()) == _est(CostEstimator(encoding_name="cl100k_base"))
+
+
+def test_encoding_name_changes_doc_token_count() -> None:
+    import tiktoken
+
+    o200k = _est(CostEstimator(encoding_name="o200k_base"))
+    assert len(tiktoken.get_encoding("o200k_base").encode(_FRENCH)) < len(
+        tiktoken.get_encoding("cl100k_base").encode(_FRENCH)
+    )
+    assert o200k.total_tokens < _est(CostEstimator()).total_tokens
+
+
+def test_dataset_generation_honours_encoding() -> None:
+    from chunktuner.eval.cost_estimator import estimate_dataset_generation
+
+    docs = [Document(id="d1", content=_FRENCH, content_type="text")]
+    default, _ = estimate_dataset_generation(docs, "gpt-4o-mini")
+    o200k, _ = estimate_dataset_generation(docs, "gpt-4o-mini", encoding_name="o200k_base")
+    assert o200k < default
+    via_estimator = _est(CostEstimator(encoding_name="o200k_base"), llm_model="gpt-4o-mini")
+    assert via_estimator.llm_dataset_tokens == o200k

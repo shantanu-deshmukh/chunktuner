@@ -62,14 +62,14 @@ For directories, the first `.md` / `.txt` file under the tree is sampled.
 
 ## `chunk-tune estimate`
 
-Dry-run **token, cost, and wall-time** estimates using `CostEstimator` — no API calls.
+Dry-run **token, cost, and wall-time** estimates using `CostEstimator` — no API calls. Documents whose content type a selected strategy does not support (e.g. code with the default text strategies) are skipped with a warning naming the strategies that support them; if none remain, the command exits 1. Token counts use the workspace `tokenizer_encoding`.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `path` | path | (required) | File or directory |
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated strategy names |
 | `--use-case` | string | `rag_qa` | Scoring profile label (for consistency with other commands) |
-| `--max-docs` | int | `100` (or `max_docs` in YAML) | Cap documents after ingest |
+| `--max-docs` | int | `100` (or `max_docs` in YAML) | Cap documents after ingest and unsupported-type filtering |
 | `--config` | path | none | `.autochunk.yaml` |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
 | `--generate-dataset` | bool | false | Also estimate LLM eval-dataset generation (adds `llm_model` and `llm_dataset_tokens`; `llm_cost_usd` uses that model's pricing) |

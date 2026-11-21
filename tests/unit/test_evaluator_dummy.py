@@ -1,7 +1,5 @@
 """Evaluator smoke tests with ``DummyEmbeddingFunction``."""
 
-from __future__ import annotations
-
 import uuid
 
 from chunktuner.chunking.fixed_tokens import FixedTokenStrategy

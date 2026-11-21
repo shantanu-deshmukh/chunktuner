@@ -1,7 +1,5 @@
 """Offset invariant: doc.content[start:end] == chunk.text."""
 
-from __future__ import annotations
-
 import uuid
 
 import pytest

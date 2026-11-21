@@ -145,6 +145,7 @@ def register(app: typer.Typer) -> None:
             api_key=resolved_api_key,
             cache_dir=cache_dir,
             yes=yes,
+            encoding_name=tokenizer_encoding(ws),
         )
         scorer = ScoreCalculator(
             cast(UseCase, use_case), retrieval_scope=cast(RetrievalScope, retrieval_scope)

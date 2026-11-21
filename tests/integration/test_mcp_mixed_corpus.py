@@ -65,3 +65,16 @@ def test_single_type_corpus_has_no_skip_warning(mixed: Path) -> None:
     assert not any("Skipped" in w for w in out["warnings"])
     dry = evaluate_chunking_impl(str(mixed), "rag_qa", dry_run=True)
     assert "warnings" not in dry
+
+
+def test_dry_run_only_code_default_strategies_errors(mixed: Path) -> None:
+    (mixed / "guide.md").unlink()
+    with pytest.raises(ValueError, match="code_ast"):
+        evaluate_chunking_impl(str(mixed), "rag_qa", dry_run=True)
+
+
+def test_dry_run_max_docs_applied_after_filtering(mixed: Path) -> None:
+    (mixed / "a_tool.py").write_text("def g():\n    return 2\n", encoding="utf-8")
+    out = evaluate_chunking_impl(str(mixed), "rag_qa", dry_run=True, max_docs=1)
+    only_md = evaluate_chunking_impl(str(mixed / "guide.md"), "rag_qa", dry_run=True)
+    assert {k: v for k, v in out.items() if k != "warnings"} == only_md

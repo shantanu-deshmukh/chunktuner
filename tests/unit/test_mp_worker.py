@@ -1,7 +1,5 @@
 """Picklable worker entry for parallel evaluation."""
 
-from __future__ import annotations
-
 import pytest
 
 from chunktuner.tuner.mp_worker import mp_evaluate_task

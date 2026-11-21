@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 class CostEstimator:
-    """Heuristic token counts and USD estimates without calling embedding or LLM APIs."""
+    """Heuristic token counts and USD estimates without calling embedding or LLM APIs.
+
+    ``encoding_name`` is the tiktoken encoding used to count document tokens (the workspace
+    ``tokenizer_encoding``; default ``cl100k_base``).
+    """
+
+    def __init__(self, encoding_name: str = "cl100k_base") -> None:
+        self.encoding_name = encoding_name
 
     def estimate(
         self,
@@ -32,7 +39,7 @@ class CostEstimator:
         and ``llm_model`` / ``llm_dataset_tokens`` are filled in; otherwise the legacy
         per-query heuristic is used and those fields stay ``None``.
         """
-        doc_tokens = _sum_doc_tokens(docs)
+        doc_tokens = _sum_doc_tokens(docs, self.encoding_name)
         n_configs = sum(len(param_grid.get(s, [{}])) for s in strategies)
         if n_configs == 0:
             n_configs = len(strategies)
@@ -54,6 +61,7 @@ class CostEstimator:
                 llm_model,
                 questions_per_doc=questions_per_doc,
                 max_queries=max_queries,
+                encoding_name=self.encoding_name,
             )
         elif generate_dataset:
             q = max(1, len(docs) * 2)
@@ -84,6 +92,7 @@ def estimate_dataset_generation(
     *,
     questions_per_doc: int = 3,
     max_queries: int = 50,
+    encoding_name: str = "cl100k_base",
 ) -> tuple[int, float]:
     """Return ``(llm_tokens, usd)`` for LLM eval-dataset generation (no API calls).
 
@@ -97,17 +106,17 @@ def estimate_dataset_generation(
     n_docs = min(len(docs), budget)
     # Builder samples randomly; use the largest docs for a conservative upper bound.
     snippets = sorted((d.content[:_DATASET_SNIPPET_CHARS] for d in docs), key=len, reverse=True)
-    in_tokens = sum(_count_tokens(s) for s in snippets[:n_docs])
+    in_tokens = sum(_count_tokens(s, encoding_name) for s in snippets[:n_docs])
     in_tokens += n_docs * _DATASET_PROMPT_OVERHEAD_TOKENS
     out_tokens = n_docs * questions_per_doc * _DATASET_OUTPUT_TOKENS_PER_QUESTION
     return in_tokens + out_tokens, round(_llm_model_cost_usd(llm_model, in_tokens, out_tokens), 6)
 
 
-def _count_tokens(text: str) -> int:
+def _count_tokens(text: str, encoding_name: str = "cl100k_base") -> int:
     try:
         import tiktoken
 
-        return len(tiktoken.get_encoding("cl100k_base").encode(text))
+        return len(tiktoken.get_encoding(encoding_name).encode(text))
     except Exception:
         return max(1, len(text) // 4)
 
@@ -126,11 +135,11 @@ def _llm_model_cost_usd(model: str, in_tokens: int, out_tokens: int) -> float:
     return _llm_cost_usd(in_tokens + out_tokens)
 
 
-def _sum_doc_tokens(docs: list[Document]) -> int:
+def _sum_doc_tokens(docs: list[Document], encoding_name: str = "cl100k_base") -> int:
     try:
         import tiktoken
 
-        enc = tiktoken.get_encoding("cl100k_base")
+        enc = tiktoken.get_encoding(encoding_name)
         return sum(len(enc.encode(d.content)) for d in docs)
     except Exception:
         logger.warning(

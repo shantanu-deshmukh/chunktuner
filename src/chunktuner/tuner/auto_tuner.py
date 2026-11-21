@@ -19,8 +19,9 @@ from chunktuner.models import (
 logger = logging.getLogger(__name__)
 
 # Strategies skipped when ``strategies`` is None; they run only when named explicitly.
-# ``late_chunking`` is a fixed-token fallback and would only duplicate ``fixed_tokens``.
-_EXPLICIT_ONLY = frozenset({"late_chunking"})
+# ``late_chunking`` is a fixed-token fallback and would only duplicate ``fixed_tokens``;
+# ``agentic`` calls an LLM per document (10-50x the cost) and needs an API key.
+_EXPLICIT_ONLY = frozenset({"late_chunking", "agentic"})
 
 
 def _embed_task_fields(embedding_fn: object) -> dict:
@@ -66,11 +67,14 @@ class AutoTuner:
         evaluator: Evaluator,
         scorer: ScoreCalculator,
         cache: object | None = None,
+        encoding_name: str = "cl100k_base",
     ):
         self.strategies = strategies
         self.evaluator = evaluator
         self.scorer = scorer
         self.cache = cache
+        # tiktoken encoding sent to process-pool workers (``parallel=True``).
+        self.encoding_name = encoding_name
 
     def _baseline_config(self, ct: str) -> ChunkConfig | None:
         """Baseline config for ``ct``: fixed_tokens 512/0, else code_window 512/0, else None."""
@@ -115,7 +119,7 @@ class AutoTuner:
                 inferred from ``docs[0]``.
             strategies: Subset of registered strategy names; ``None`` means all
                 compatible with the content type except explicit-only ones
-                (``late_chunking``).
+                (``late_chunking`` and ``agentic``, which run only when named).
             param_grid: Optional map ``strategy_name -> list[params dict]`` overriding
                 ``default_param_grid()``.
             max_docs: Cap documents used (after sampling order); ``None`` uses all.
@@ -221,7 +225,7 @@ class AutoTuner:
                         "llm_answer_model": self.evaluator.llm_answer_model,
                         "llm_api_base": self.evaluator.llm_api_base,
                         "llm_api_key": self.evaluator.llm_api_key,
-                        "encoding": "cl100k_base",
+                        "encoding": self.encoding_name,
                         **embed_fields,
                     }
                 )

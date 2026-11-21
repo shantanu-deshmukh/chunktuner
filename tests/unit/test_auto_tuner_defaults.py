@@ -6,7 +6,7 @@ from chunktuner.chunking.bootstrap import build_full_registry
 from chunktuner.eval.embeddings import DummyEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
-from chunktuner.models import Document
+from chunktuner.models import ChunkConfig, Document
 from chunktuner.tuner.auto_tuner import AutoTuner
 
 PROSE = " ".join(f"Paragraph {i} discusses retrieval and chunking tradeoffs." for i in range(200))
@@ -30,19 +30,37 @@ def text_docs() -> list[Document]:
     return [Document(id="t1", content=PROSE, content_type="text")]
 
 
-def test_default_recommend_excludes_late_chunking(text_docs, monkeypatch) -> None:
-    tuner = _tuner()
-    # Keep the run fast/offline: drop LLM-backed and slow strategies from the registry view.
-    reg = tuner.strategies
-    real_names = reg.names
-    monkeypatch.setattr(
-        reg,
-        "names",
-        lambda ct=None: [n for n in real_names(ct) if n not in {"agentic"}],
-    )
-    rec = tuner.recommend(text_docs, "rag_qa")
+def test_default_recommend_excludes_late_chunking(text_docs) -> None:
+    rec = _tuner().recommend(text_docs, "rag_qa")
     assert "late_chunking" not in _ran(rec)
     assert "fixed_tokens" in _ran(rec)
+
+
+def _fail_if_called(*_a, **_k):
+    raise AssertionError("agentic must not run unless named explicitly")
+
+
+def test_default_recommend_excludes_agentic_without_api_key(text_docs, monkeypatch) -> None:
+    for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    tuner = _tuner()
+    assert "agentic" in tuner.strategies.names("text")
+    monkeypatch.setattr(tuner.strategies.get("agentic"), "chunk", _fail_if_called)
+    rec = tuner.recommend(text_docs, "rag_qa")
+    assert "agentic" not in _ran(rec)
+    assert "fixed_tokens" in _ran(rec)
+
+
+def test_explicit_agentic_is_included(text_docs, monkeypatch) -> None:
+    tuner = _tuner()
+    fixed = tuner.strategies.get("fixed_tokens")
+
+    def fake_chunk(doc, config):
+        return fixed.chunk(doc, ChunkConfig(name="fixed_tokens", params={"max_tokens": 256}))
+
+    monkeypatch.setattr(tuner.strategies.get("agentic"), "chunk", fake_chunk)
+    rec = tuner.recommend(text_docs, "rag_qa", strategies=["agentic"])
+    assert "agentic" in _ran(rec)
 
 
 def test_explicit_late_chunking_is_included(text_docs) -> None:

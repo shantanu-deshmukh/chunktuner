@@ -1,7 +1,5 @@
 """Generate virtual ``docs/api/*.md`` and ``SUMMARY.md`` via mkdocs-gen-files."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import mkdocs_gen_files

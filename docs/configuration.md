@@ -18,7 +18,7 @@ Created in the **current directory** by `chunk-tune init`. Merged at runtime wit
 | `cache_dir` | string | `~/.cache/chunktuner` | SQLite and cache root |
 | `log_level` | string | `INFO` | Level for `chunktuner` loggers in CLI commands (stderr); not used by the MCP server |
 | `strip_patterns` | list of string | `[]` | Regex patterns removed from every document at ingest (`evaluate` / `compare` / `recommend` / `estimate` / `preview`); chunk offsets refer to the stripped text |
-| `tokenizer_encoding` | string | `cl100k_base` | tiktoken encoding for chunking, evaluation, and `analyze` / `preview` token counts (`estimate` still counts with `cl100k_base`) |
+| `tokenizer_encoding` | string | `cl100k_base` | tiktoken encoding for chunking, evaluation, and `analyze` / `preview` / `estimate` token counts (including the `max_tokens_per_run` check and parallel `recommend` workers) |
 
 `analyze`, `preview`, `estimate`, `evaluate`, `recommend`, `compare` and `cache` accept `--config /path/to/.autochunk.yaml` to point elsewhere.
 
@@ -35,6 +35,8 @@ Precedence: CLI flag > key present in `.autochunk.yaml` > command default. `chun
 | `CHUNKTUNER_API_BASE` | Optional API base URL for LiteLLM (CLI fallback when `api_base` is unset in YAML; used by MCP server) |
 | `CHUNKTUNER_API_KEY` | Optional API key for LiteLLM (CLI fallback when `api_key` is unset in YAML; used by MCP server) |
 | `CHUNKTUNER_LLM_MODEL` | Default LLM model id for the MCP server (dataset generation and generation metrics), whether or not tools pass an embedding model |
+| `CHUNKTUNER_MAX_PREVIEW_CHARS` | Maximum `text` length accepted by the MCP `preview_chunks` tool (default `500000` characters) |
+| `CHUNK_TUNER_API_TOKEN` | **HTTP API**: when set, every request except `GET /health` must send `Authorization: Bearer <token>`; unset means no auth |
 | `CHUNKTUNER_SKIP_OFFSET_VALIDATION` | Set to `1` to skip chunk offset validation (debugging only) |
 | `OPENAI_API_KEY` / `GEMINI_API_KEY` / other provider keys | Passed through **LiteLLM** for real embeddings and LLM calls |
 | `LITELLM_LOG` | LiteLLM logging verbosity |

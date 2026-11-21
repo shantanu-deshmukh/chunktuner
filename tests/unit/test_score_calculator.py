@@ -1,7 +1,5 @@
 """ScoreCalculator behaviour across use-case profiles."""
 
-from __future__ import annotations
-
 import pytest
 
 from chunktuner.eval.score_calculator import ScoreCalculator

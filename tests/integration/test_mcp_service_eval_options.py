@@ -1,7 +1,5 @@
 """MCP service impls: dataset_path, generate_dataset, retrieval_scope, content_type, warnings."""
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from types import SimpleNamespace

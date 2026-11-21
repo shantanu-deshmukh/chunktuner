@@ -1,7 +1,5 @@
 """Parallel vs sequential AutoTuner parity."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
@@ -134,3 +132,52 @@ def test_parallel_equals_sequential_corpus_scope(tmp_path: Path) -> None:
     corp = ScoreCalculator("search", retrieval_scope="corpus")
     for r in par.ranked:
         assert r.score == pytest.approx(corp.score(r.metrics))
+
+
+class _InlinePool:
+    """Stand-in for ProcessPoolExecutor: runs tasks in-process and records them."""
+
+    tasks: list[dict] = []
+
+    def __init__(self, max_workers: int | None = None) -> None:
+        pass
+
+    def __enter__(self) -> "_InlinePool":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def submit(self, fn, task):  # type: ignore[no-untyped-def]
+        from concurrent.futures import Future
+
+        _InlinePool.tasks.append(task)
+        fut: Future = Future()
+        fut.set_result(fn(task))
+        return fut
+
+
+@pytest.mark.parametrize("encoding", [None, "o200k_base"])
+def test_parallel_tasks_carry_encoding(fixture_docs, monkeypatch, encoding) -> None:
+    import chunktuner.tuner.auto_tuner as auto_tuner_mod
+
+    monkeypatch.setattr(auto_tuner_mod, "ProcessPoolExecutor", _InlinePool)
+    _InlinePool.tasks = []
+    kw = {} if encoding is None else {"encoding_name": encoding}
+    tuner = AutoTuner(
+        build_full_registry(),
+        Evaluator(DummyEmbeddingFunction(), top_k=3),
+        ScoreCalculator(use_case="rag_qa"),
+        **kw,
+    )
+    rec = tuner.recommend(
+        fixture_docs,
+        use_case="rag_qa",
+        strategies=["fixed_tokens"],
+        param_grid={"fixed_tokens": [{"max_tokens": 64, "overlap_tokens": 0}]},
+        parallel=True,
+        baseline=False,
+    )
+    assert rec.ranked
+    assert _InlinePool.tasks
+    assert {t["encoding"] for t in _InlinePool.tasks} == {encoding or "cl100k_base"}

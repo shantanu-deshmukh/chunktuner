@@ -1,7 +1,5 @@
 """URL ingestor SSRF guard."""
 
-from __future__ import annotations
-
 import pytest
 
 from chunktuner.ingestion.url_ingestor import URLIngestor

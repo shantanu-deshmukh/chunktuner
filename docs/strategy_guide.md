@@ -66,7 +66,7 @@
 
 ## `agentic`
 
-- **Best for:** High-value narrative docs where an LLM can propose span boundaries (API cost).
+- **Best for:** High-value narrative docs where an LLM can propose span boundaries (API cost). Excluded from default tuner runs; only evaluated when named explicitly.
 - **How it works:** Prompts an LLM for JSON offsets; clamps to a 50k character prefix with a warning if truncated; optional fuzzy rejection when the model also supplies `text` / `chunk_text`.
 - **Key parameters:** `model`, `max_propositions`.
 - **Performance:** Expensive (LLM per document); falls back to `recursive_character` if no valid chunks.

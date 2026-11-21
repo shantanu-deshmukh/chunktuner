@@ -1,7 +1,5 @@
 """Tests for ``chunktuner.mcp.service`` helpers (no MCP transport)."""
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest

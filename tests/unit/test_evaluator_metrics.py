@@ -1,7 +1,5 @@
 """Evaluator metrics with deterministic dummy embeddings."""
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, Mock
 
 import tiktoken

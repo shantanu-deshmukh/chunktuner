@@ -5,7 +5,6 @@ import sys
 import pytest
 
 from chunktuner.chunking.bootstrap import build_full_registry
-from chunktuner.chunking.registry import StrategyRegistry
 from chunktuner.eval.embeddings import DummyEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
@@ -28,12 +27,10 @@ def test_semantic_not_registered_without_semchunk() -> None:
 
 @pytest.mark.usefixtures("no_semchunk")
 def test_recommend_default_strategies_without_semchunk() -> None:
-    # Drop the LLM-backed strategy (it needs an API key); everything else runs by default.
-    reg = StrategyRegistry()
-    for strat in build_full_registry().list():
-        if strat.name != "agentic":
-            reg.register(strat)
-    tuner = AutoTuner(reg, Evaluator(DummyEmbeddingFunction()), ScoreCalculator("rag_qa"))
+    # The LLM-backed ``agentic`` strategy is explicit-only, so the full registry runs offline.
+    tuner = AutoTuner(
+        build_full_registry(), Evaluator(DummyEmbeddingFunction()), ScoreCalculator("rag_qa")
+    )
     para = "Chunking splits documents into retrievable pieces. " * 20
     doc = Document(id="t1", content=f"{para}\n\n{para}", content_type="text")
     rec = tuner.recommend([doc], "rag_qa", content_type="text")

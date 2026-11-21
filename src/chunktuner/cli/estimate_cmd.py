@@ -7,10 +7,13 @@ import typer
 from chunktuner.cli.common import (
     CONFIG_HELP,
     USE_CASE_HELP,
+    check_strategy_names,
     ingest_corpus,
     load_workspace,
     max_docs_help,
     registry_for,
+    select_supported_docs,
+    tokenizer_encoding,
     validate_output_format,
     ws_setting,
 )
@@ -45,18 +48,24 @@ def register(app: typer.Typer) -> None:
             None, "--llm-model", help="LLM for dataset generation; default: workspace llm_model."
         ),
     ) -> None:
-        """Estimate tokens, cost, and wall time (no API calls)."""
+        """Estimate tokens, cost, and wall time (no API calls).
+
+        Like evaluate, skips docs whose content type a selected strategy does not support.
+        """
         validate_output_format(output_format)
         ws = load_workspace(config)
         max_docs = ws_setting(ws, "max_docs", max_docs, 100)
         registry = registry_for(ws)
-        docs, _root = ingest_corpus(path, ws)
-        docs = docs[:max_docs]
         names = [s.strip() for s in strategies.split(",") if s.strip()]
+        check_strategy_names(names, registry)
+        docs, _root = ingest_corpus(path, ws)
+        # Same doc selection as evaluate/compare/recommend: skip unsupported content types
+        # (warning on stderr), exit 1 if none remain, then cap at max_docs.
+        docs = select_supported_docs(docs, names, registry, path)[:max_docs]
         param_grid: dict[str, list[dict]] = {}
         for n in names:
             param_grid[n] = registry.get(n).default_param_grid()
-        est = CostEstimator().estimate(
+        est = CostEstimator(encoding_name=tokenizer_encoding(ws)).estimate(
             docs,
             names,
             param_grid,

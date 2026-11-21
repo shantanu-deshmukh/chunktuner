@@ -148,8 +148,12 @@ def resolve_eval_dataset(
     api_key: str | None,
     cache_dir: Path,
     yes: bool,
+    encoding_name: str = DEFAULT_TOKENIZER_ENCODING,
 ) -> Any:
-    """Return the `EvalDataset` for a CLI run (user file, cached LLM generation, or trivial)."""
+    """Return the `EvalDataset` for a CLI run (user file, cached LLM generation, or trivial).
+
+    ``encoding_name`` only affects the token count shown in the generation confirm prompt.
+    """
     from chunktuner.eval.cost_estimator import estimate_dataset_generation
     from chunktuner.eval.dataset_sources import (
         DEFAULT_MAX_QUERIES,
@@ -180,6 +184,7 @@ def resolve_eval_dataset(
                 llm_model,
                 questions_per_doc=DEFAULT_QUESTIONS_PER_DOC,
                 max_queries=DEFAULT_MAX_QUERIES,
+                encoding_name=encoding_name,
             )
             typer.confirm(
                 f"Generating an eval dataset calls LLM {llm_model!r} "
@@ -418,14 +423,14 @@ def check_token_budget(
 ) -> None:
     """Enforce ``max_tokens_per_run`` (only when written in the yaml).
 
-    Uses the same `CostEstimator` total as ``chunk-tune estimate``. Over the cap: exit 1, or
-    with ``--yes`` warn and continue.
+    Uses the same `CostEstimator` total (and workspace tokenizer) as ``chunk-tune estimate``.
+    Over the cap: exit 1, or with ``--yes`` warn and continue.
     """
     if "max_tokens_per_run" not in ws.model_fields_set:
         return
     from chunktuner.eval.cost_estimator import CostEstimator
 
-    est = CostEstimator().estimate(
+    est = CostEstimator(encoding_name=tokenizer_encoding(ws)).estimate(
         docs, names, param_grid, embedding_model or DEFAULT_EMBEDDING_MODEL
     )
     cap = ws.max_tokens_per_run

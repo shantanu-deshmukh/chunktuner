@@ -108,6 +108,8 @@ rec = tuner.recommend(
 )
 ```
 
+With `strategies=None`, every strategy compatible with the content type runs except the explicit-only `late_chunking` and `agentic`. Pass `encoding_name=` (default `cl100k_base`) to match a non-default `tokenizer_encoding` when `parallel=True`.
+
 `parallel=True` uses a process pool; embedding payloads must be picklable (see the `AutoTuner` / parallel evaluation notes in the [API reference](api/tuner/auto_tuner.md)).
 
 ---

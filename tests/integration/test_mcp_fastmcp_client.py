@@ -1,7 +1,5 @@
 """In-process MCP session tests via ``mcp.shared.memory`` (mcp >= 1.7)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 from pathlib import Path
