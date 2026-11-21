@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from chunktuner.eval.rerankers import validate_reranker_spec
+from chunktuner.models import RetrievalMode
 
 # Default tiktoken encoding (GPT-4 / cl100k family)
 DEFAULT_TOKENIZER_ENCODING = "cl100k_base"
@@ -36,6 +39,13 @@ class WorkspaceConfig(BaseModel):
     log_level: str = "INFO"
     strip_patterns: list[str] = Field(default_factory=list)
     tokenizer_encoding: str = DEFAULT_TOKENIZER_ENCODING
+    retrieval_mode: RetrievalMode = "dense"
+    reranker: str | None = None
+
+    @field_validator("reranker")
+    @classmethod
+    def _check_reranker(cls, value: str | None) -> str | None:
+        return None if value is None else validate_reranker_spec(value)
 
 
 def load_workspace_config(path: Path | None) -> WorkspaceConfig:
@@ -123,4 +133,11 @@ def default_init_yaml() -> dict[str, Any]:
         "cache_dir": str(Path.home() / ".cache" / "chunktuner"),
         "log_level": "INFO",
         "strip_patterns": [],
+        # retrieval_mode: dense (embeddings), bm25 (lexical, no embedding calls; needs the
+        # bm25 extra) or hybrid (dense + BM25 fused with reciprocal rank fusion).
+        "retrieval_mode": "dense",
+        # reranker: null → no reranking. dummy (free, tests), local / local:<hf-id>
+        # (cross-encoder; late extra; downloads a Hugging Face model), or a LiteLLM rerank
+        # model string, e.g. cohere/rerank-english-v3.0 (paid API; key from provider env vars).
+        "reranker": None,
     }

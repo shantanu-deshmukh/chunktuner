@@ -208,3 +208,74 @@ def test_mcp_session_evaluate_with_new_optional_fields(
             assert bad.isError is True
 
     asyncio.run(body())
+
+
+def test_mcp_session_retrieval_mode_and_reranker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from chunktuner.mcp import service
+
+    require_extra("bm25", "bm25s")
+    base = tmp_path / "base"
+    corpus = base / "corpus"
+    corpus.mkdir(parents=True)
+    (corpus / "a.txt").write_text("Alpha sentence about apples. " * 40)
+    (corpus / "b.txt").write_text("Beta sentence about rivers. " * 40)
+    monkeypatch.setenv("CHUNK_TUNER_BASE_DIR", str(base))
+    monkeypatch.setattr(service, "mcp_cache_dir", lambda: tmp_path / "cache")
+
+    async def body() -> None:
+        async with create_connected_server_and_client_session(create_mcp_app()) as session:
+            listed = await session.list_tools()
+            for name in ("evaluate_chunking", "recommend_config"):
+                tool = next(t for t in listed.tools if t.name == name)
+                props = tool.inputSchema["properties"]
+                assert {"retrieval_mode", "reranker"} <= set(props)
+                assert "retrieval_mode" not in tool.inputSchema.get("required", [])
+                assert "reranker" not in tool.inputSchema.get("required", [])
+                assert props["retrieval_mode"]["default"] == "dense"
+                assert set(props["retrieval_mode"]["enum"]) == {"dense", "bm25", "hybrid"}
+                assert "'bm25' extra" in props["retrieval_mode"]["description"]
+                assert "local:<hf-model-id>" in props["reranker"]["description"]
+                assert "may cost money" in props["reranker"]["description"]
+
+            raw = await session.call_tool(
+                "evaluate_chunking",
+                {
+                    "path": str(corpus),
+                    "strategies": ["fixed_tokens"],
+                    "retrieval_mode": "bm25",
+                    "reranker": "dummy",
+                    "use_cache": False,
+                },
+            )
+            assert raw.isError is False
+            out = _tool_payload(raw)
+            assert out["results"]
+            for r in out["results"]:
+                assert r["metrics"]["retrieval_mode"] == "bm25"
+                assert r["metrics"]["reranker"] == "dummy/rerank"
+
+            bad_mode = await session.call_tool(
+                "evaluate_chunking",
+                {"path": str(corpus), "retrieval_mode": "sparse"},
+            )
+            assert bad_mode.isError is True
+
+            bad_reranker = await session.call_tool(
+                "evaluate_chunking",
+                {"path": str(corpus), "strategies": ["fixed_tokens"], "reranker": "local:"},
+            )
+            assert bad_reranker.isError is True
+            assert "local:" in "".join(
+                b.text for b in bad_reranker.content if isinstance(b, TextContent)
+            )
+
+            outside = await session.call_tool(
+                "recommend_config",
+                {"path": str(tmp_path), "retrieval_mode": "hybrid", "reranker": "dummy"},
+            )
+            assert outside.isError is True
+
+    asyncio.run(body())

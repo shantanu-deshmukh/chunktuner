@@ -15,6 +15,7 @@ from chunktuner.cli.common import (
     TOP_K_HELP,
     USE_CASE_HELP,
     baseline_unsupported,
+    build_retrieval,
     check_dataset_flags,
     check_strategy_names,
     check_token_budget,
@@ -23,11 +24,15 @@ from chunktuner.cli.common import (
     load_workspace,
     max_docs_help,
     registry_for,
+    reranker_option,
     resolve_eval_dataset,
+    resolve_retrieval,
+    retrieval_mode_option,
     retrieval_scope_option,
     select_supported_docs,
     tokenizer_encoding,
     warn,
+    warn_reranker_overflow,
     ws_setting,
 )
 from chunktuner.config import (
@@ -38,7 +43,7 @@ from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingF
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.ingestion.file_ingestor import FileIngestor
-from chunktuner.models import RetrievalScope, UseCase
+from chunktuner.models import RetrievalMode, RetrievalScope, UseCase
 from chunktuner.tuner.auto_tuner import AutoTuner
 
 
@@ -91,6 +96,8 @@ def register(app: typer.Typer) -> None:
             False, "--generate-dataset", help=GENERATE_DATASET_HELP
         ),
         retrieval_scope: str = retrieval_scope_option(),
+        retrieval_mode: str | None = retrieval_mode_option(),
+        reranker: str | None = reranker_option(),
         no_cache: bool = typer.Option(False, "--no-cache", help=NO_CACHE_HELP),
     ) -> None:
         """Run tuner and print the best chunking configuration."""
@@ -101,6 +108,8 @@ def register(app: typer.Typer) -> None:
         registry = registry_for(ws)
         names = [s.strip() for s in strategies.split(",") if s.strip()]
         check_strategy_names(names, registry)
+        mode, rerank_spec = resolve_retrieval(ws, retrieval_mode, reranker)
+        rr = build_retrieval(mode, rerank_spec, yes=yes)
         cache_dir = workspace_cache_dir(ws)
         resolved_api_base, resolved_api_key = resolve_provider_config(ws)
         resolved_api_base = api_base or resolved_api_base
@@ -143,6 +152,7 @@ def register(app: typer.Typer) -> None:
             {n: registry.get(n).default_param_grid() for n in names},
             embedding_model=resolved_embedding_model,
             yes=yes,
+            retrieval_mode=mode,
         )
         ds = resolve_eval_dataset(
             docs,
@@ -167,6 +177,8 @@ def register(app: typer.Typer) -> None:
             llm_api_base=resolved_api_base,
             llm_api_key=resolved_api_key,
             retrieval_scope=cast(RetrievalScope, retrieval_scope),
+            retrieval_mode=cast(RetrievalMode, mode),
+            reranker=rr,
         )
         tuner = AutoTuner(registry, ev, scorer, encoding_name=tokenizer_encoding(ws))
         # Every remaining doc is supported by every strategy in ``names``; the tuner's
@@ -190,3 +202,4 @@ def register(app: typer.Typer) -> None:
             dataset=ds,
         )
         emit_output(rec, output_format)
+        warn_reranker_overflow([*rec.ranked, rec.baseline], rr)

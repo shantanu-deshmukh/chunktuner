@@ -9,9 +9,11 @@ from chunktuner.cache.wrapped_embeddings import CachedEmbeddingFunction
 from chunktuner.chunking.bootstrap import build_full_registry
 from chunktuner.eval.embeddings import DummyEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
+from chunktuner.eval.rerankers import DummyReranker
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.ingestion.file_ingestor import FileIngestor
 from chunktuner.tuner.auto_tuner import AutoTuner
+from tests._extras import require_extra
 
 
 @pytest.fixture
@@ -181,3 +183,158 @@ def test_parallel_tasks_carry_encoding(fixture_docs, monkeypatch, encoding) -> N
     assert rec.ranked
     assert _InlinePool.tasks
     assert {t["encoding"] for t in _InlinePool.tasks} == {encoding or "cl100k_base"}
+
+
+def _topic_docs(tmp_path: Path, text: str = "Sentence about {topic} number {i}. ") -> list:
+    for i, topic in enumerate(["apples", "rivers", "stars"]):
+        (tmp_path / f"d{i}.txt").write_text(text.format(topic=topic, i=i) * 60)
+    return FileIngestor(root=tmp_path).ingest_dir(tmp_path)
+
+
+def _assert_parallel_matches_sequential(docs, make_evaluator, monkeypatch=None) -> list[dict]:
+    """Run a tiny grid sequentially and via the worker; metrics and scores must match."""
+    registry = build_full_registry()
+
+    def make_tuner() -> AutoTuner:
+        return AutoTuner(registry, make_evaluator(), ScoreCalculator("rag_qa"))
+
+    grid = {
+        "fixed_tokens": [{"max_tokens": 32, "overlap_tokens": 0}],
+        "recursive_character": [{"chunk_size_chars": 150, "chunk_overlap_chars": 0}],
+    }
+    kw = {"strategies": list(grid), "param_grid": grid, "baseline": False}
+    seq = make_tuner().recommend(docs, "rag_qa", **kw)
+    _InlinePool.tasks = []
+    if monkeypatch is not None:
+        import chunktuner.tuner.auto_tuner as auto_tuner_mod
+
+        monkeypatch.setattr(auto_tuner_mod, "ProcessPoolExecutor", _InlinePool)
+    par = make_tuner().recommend(docs, "rag_qa", parallel=True, max_workers=2, **kw)
+    by_name_seq = {r.strategy_name: r for r in seq.ranked}
+    by_name_par = {r.strategy_name: r for r in par.ranked}
+    assert by_name_seq.keys() == by_name_par.keys()
+    for name, r_seq in by_name_seq.items():
+        r_par = by_name_par[name]
+        assert r_seq.score == pytest.approx(r_par.score), name
+        m_seq, m_par = (
+            {k: v for k, v in r.metrics.model_dump().items() if "latency" not in k}
+            for r in (r_seq, r_par)
+        )
+        assert m_seq == m_par, name
+    return list(_InlinePool.tasks)
+
+
+def test_parallel_equals_sequential_bm25(tmp_path: Path) -> None:
+    """D17: retrieval_mode="bm25" reaches the worker's Evaluator."""
+    require_extra("bm25", "bm25s")
+    docs = _topic_docs(tmp_path)
+    _assert_parallel_matches_sequential(
+        docs, lambda: Evaluator(DummyEmbeddingFunction(), top_k=3, retrieval_mode="bm25")
+    )
+
+
+def test_parallel_equals_sequential_hybrid_rerank(tmp_path: Path) -> None:
+    """D17: retrieval_mode="hybrid" plus a DummyReranker survive the worker round-trip."""
+    require_extra("bm25", "bm25s")
+    docs = _topic_docs(tmp_path)
+    _assert_parallel_matches_sequential(
+        docs,
+        lambda: Evaluator(
+            DummyEmbeddingFunction(),
+            top_k=3,
+            retrieval_mode="hybrid",
+            reranker=DummyReranker(),
+            rerank_candidates=4,
+        ),
+    )
+
+
+def test_parallel_equals_sequential_o200k_evaluator(tmp_path: Path) -> None:
+    """D27: the worker Evaluator counts tokens with the parent's encoding, not cl100k_base."""
+    docs = _topic_docs(tmp_path, "Die Quantenchromodynamik über {topic} beschreibt Gluonen {i}. ")
+    _assert_parallel_matches_sequential(
+        docs,
+        lambda: Evaluator(
+            DummyEmbeddingFunction(), top_k=3, encoding_name="o200k_base", context_budget_tokens=300
+        ),
+    )
+
+
+def test_parallel_tasks_carry_evaluator_fields(tmp_path: Path, monkeypatch) -> None:
+    """Task dicts serialise retrieval mode, reranker, encoding, budget and batch size."""
+    docs = _topic_docs(tmp_path)
+    tasks = _assert_parallel_matches_sequential(
+        docs,
+        lambda: Evaluator(
+            DummyEmbeddingFunction(),
+            top_k=3,
+            encoding_name="o200k_base",
+            context_budget_tokens=300,
+            batch_size=7,
+            reranker=DummyReranker(),
+            rerank_candidates=5,
+        ),
+        monkeypatch,
+    )
+    assert tasks
+    for t in tasks:
+        assert t["retrieval_mode"] == "dense"
+        assert t["reranker_spec"] == "dummy"
+        assert "reranker_api_key" not in t
+        assert t["rerank_candidates"] == 5
+        assert t["encoding_name"] == "o200k_base"
+        assert t["encoding"] == "cl100k_base"
+        assert t["context_budget_tokens"] == 300
+        assert t["batch_size"] == 7
+
+
+def test_parallel_task_defaults(fixture_docs, monkeypatch) -> None:
+    """Default Evaluator: worker fields match the Evaluator defaults (no behaviour change)."""
+    import chunktuner.tuner.auto_tuner as auto_tuner_mod
+
+    monkeypatch.setattr(auto_tuner_mod, "ProcessPoolExecutor", _InlinePool)
+    _InlinePool.tasks = []
+    AutoTuner(
+        build_full_registry(), Evaluator(DummyEmbeddingFunction()), ScoreCalculator("rag_qa")
+    ).recommend(
+        fixture_docs,
+        "rag_qa",
+        strategies=["fixed_tokens"],
+        param_grid={"fixed_tokens": [{"max_tokens": 64, "overlap_tokens": 0}]},
+        parallel=True,
+        baseline=False,
+    )
+    assert _InlinePool.tasks
+    for t in _InlinePool.tasks:
+        assert t["retrieval_mode"] == "dense"
+        assert t["reranker_spec"] is None
+        assert t["rerank_candidates"] == 20
+        assert t["encoding_name"] == "cl100k_base"
+        assert t["context_budget_tokens"] == 2000
+        assert t["batch_size"] == 64
+
+
+def test_rerank_task_fields_litellm_round_trip() -> None:
+    from chunktuner.eval.rerankers import LiteLLMReranker, reranker_from_spec
+    from chunktuner.tuner.auto_tuner import _rerank_task_fields
+
+    assert _rerank_task_fields(None) == {"reranker_spec": None}
+    fields = _rerank_task_fields(
+        LiteLLMReranker("cohere/rerank-v3.5", api_base="http://x", api_key="k")
+    )
+    assert fields == {
+        "reranker_spec": "cohere/rerank-v3.5",
+        "reranker_api_base": "http://x",
+        "reranker_api_key": "k",
+    }
+    rebuilt = reranker_from_spec(
+        fields["reranker_spec"],
+        api_base=fields["reranker_api_base"],
+        api_key=fields["reranker_api_key"],
+    )
+    assert isinstance(rebuilt, LiteLLMReranker)
+    assert (rebuilt.model, rebuilt.api_base, rebuilt.api_key) == (
+        "cohere/rerank-v3.5",
+        "http://x",
+        "k",
+    )

@@ -52,6 +52,13 @@ For how scores are combined per use case, see [Metrics reference](metrics.md). F
 - **Intuition:** Penalizes relevant chunks that appear late in the ranked list.
 - **Use cases:** Ranking quality for retrieval-heavy profiles.
 
+### `corpus_recall_at_k` / `corpus_mrr` / `corpus_ndcg_at_k` (keys 1, 3, 5)
+
+- **Definition:** The same as `recall_at_k`, `mrr` and `ndcg_at_k`, but each query is ranked against every chunk in the corpus instead of only the chunks of its own document. Only chunks of the query's own document can be relevant, so chunks from other documents act as distractors.
+- **Range:** 0–1 (per k for the dict fields); `None` on results produced before these fields existed
+- **Direction:** Higher is better
+- **Use cases:** Always computed. With `retrieval_scope="corpus"` (`--retrieval-scope corpus`), `ScoreCalculator` reads `mrr` from `corpus_mrr` and `recall_at_1` from `corpus_recall_at_k[1]` (missing values count as 0.0). No weight profile references nDCG.
+
 ### `duplication_ratio`
 
 - **Definition:** Among token positions covered by retrieved chunks, the fraction of tokens that appear in more than one chunk (within the selected top set). Implemented in `chunktuner.eval.evaluator`.
@@ -82,9 +89,23 @@ For how scores are combined per use case, see [Metrics reference](metrics.md). F
 
 ### `embedding_latency_ms` / `total_embedding_tokens`
 
-- **Definition:** Wall time for batched embeddings in this evaluation; total tokens embedded (chunks + questions).
+- **Definition:** Wall time for batched embeddings in this evaluation; total tokens embedded (chunks + questions). Both are 0 with `retrieval_mode="bm25"`, which makes no embedding calls.
 - **Range:** ms and token count ≥ 0
 - **Direction:** Lower latency and predictable token counts help operational planning; not all score profiles weight these directly.
+
+### `retrieval_mode` / `reranker`
+
+- **Definition:** The retrieval pipeline that produced the ranking metrics. `retrieval_mode` is `dense` (embedding cosine similarity), `bm25` (lexical BM25 over all corpus chunks, no embedding calls) or `hybrid` (dense and BM25 rankings fused with reciprocal rank fusion). `reranker` is the reranker's `profile_name` (for example `dummy/rerank`, `local:cross-encoder/ms-marco-MiniLM-L6-v2` or the LiteLLM model string), or `None` without a reranker.
+- **Range:** strings; `None` on results produced before these fields existed
+- **Direction:** Not a score; labels to compare runs with the same pipeline
+- **Intuition:** The reranker reorders the top `rerank_candidates` (default 20) first-stage chunks per query; the rank and token metrics use the reranked order.
+
+### `reranker_overflow_ratio`
+
+- **Definition:** Fraction of chunks whose token length (evaluator tiktoken encoding) exceeds the reranker's input window (`max_input_tokens`); those chunks are truncated by the reranker.
+- **Range:** 0–1; `None` without a reranker or when the window is unknown (LiteLLM rerankers)
+- **Direction:** Lower is better
+- **Use cases:** Not weighted by any score profile. The CLI prints a warning on stderr when it is above 0.
 
 ## Generation metrics (optional, RAGAS)
 

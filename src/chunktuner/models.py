@@ -12,6 +12,9 @@ DatasetSource = Literal["llm_generated", "user_provided", "trivial"]
 # ``document``: each query ranks only chunks of its own document (default).
 # ``corpus``: each query ranks every chunk in the corpus (distractors from other docs compete).
 RetrievalScope = Literal["document", "corpus"]
+# First-stage retrieval: ``dense`` (embedding cosine, default), ``bm25`` (lexical, no
+# embedding calls), or ``hybrid`` (dense and BM25 rankings fused with reciprocal rank fusion).
+RetrievalMode = Literal["dense", "bm25", "hybrid"]
 
 
 class Document(BaseModel):
@@ -135,6 +138,13 @@ class EvalMetrics(BaseModel):
     corpus_ndcg_at_k: dict[int, float] | None = None
     embedding_latency_ms: float = 0.0
     total_embedding_tokens: int = 0
+    # Retrieval pipeline used for the ranking metrics. ``None`` on results produced before
+    # these fields existed. ``reranker`` is the reranker's ``profile_name``;
+    # ``reranker_overflow_ratio`` is the fraction of chunks longer (in evaluator tokens) than
+    # the reranker's input window (``None`` without a reranker or when the window is unknown).
+    retrieval_mode: str | None = None
+    reranker: str | None = None
+    reranker_overflow_ratio: float | None = None
 
 
 class EvalResult(BaseModel):
@@ -177,3 +187,16 @@ class EmbeddingFunction(Protocol):
     def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
 
     def embed_query(self, text: str) -> list[float]: ...
+
+
+class Reranker(Protocol):
+    """Second-stage scorer: one relevance score per document for ``query``, in input order.
+
+    ``profile_name`` labels the model; ``max_input_tokens`` is its input window (``None`` when
+    unknown or not applicable).
+    """
+
+    profile_name: str
+    max_input_tokens: int | None
+
+    def score(self, query: str, documents: list[str]) -> list[float]: ...

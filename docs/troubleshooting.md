@@ -11,6 +11,8 @@ Install the matching optional extra (see `pyproject.toml` `[project.optional-dep
 | `ragas` / `datasets` when enabling RAGAS metrics | `uv add "chunktuner[ragas]"` |
 | `tree_sitter` / grammar packages for `code_ast` | `uv add "chunktuner[code]"` |
 | `mcp` when running `chunk-tune-mcp` | `uv add "chunktuner[mcp]"` or `uv sync --extra mcp` |
+| `bm25s` when using `--retrieval-mode bm25` or `hybrid` | `uv add "chunktuner[bm25]"` |
+| `sentence-transformers` when using `--reranker local` or `local:<hf-model-id>` | `uv add "chunktuner[late]"` |
 
 ## Authentication errors (embeddings)
 

@@ -38,6 +38,8 @@
         * [cost_estimator](api/eval/cost_estimator.md)
         * [embeddings](api/eval/embeddings.md)
         * [ragas_bridge](api/eval/ragas_bridge.md)
+        * [lexical](api/eval/lexical.md)
+        * [rerankers](api/eval/rerankers.md)
     * ingestion
         * [file_ingestor](api/ingestion/file_ingestor.md)
         * [url_ingestor](api/ingestion/url_ingestor.md)

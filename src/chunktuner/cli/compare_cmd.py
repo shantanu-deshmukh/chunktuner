@@ -17,6 +17,7 @@ from chunktuner.cli.common import (
     NO_CACHE_HELP,
     TOP_K_HELP,
     USE_CASE_HELP,
+    build_retrieval,
     check_dataset_flags,
     check_strategy_names,
     check_token_budget,
@@ -24,10 +25,14 @@ from chunktuner.cli.common import (
     load_workspace,
     max_docs_help,
     registry_for,
+    reranker_option,
     resolve_eval_dataset,
+    resolve_retrieval,
+    retrieval_mode_option,
     retrieval_scope_option,
     select_supported_docs,
     tokenizer_encoding,
+    warn_reranker_overflow,
     ws_setting,
 )
 from chunktuner.config import (
@@ -37,7 +42,7 @@ from chunktuner.config import (
 from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
 from chunktuner.eval.score_calculator import ScoreCalculator
-from chunktuner.models import ChunkConfig, RetrievalScope, UseCase
+from chunktuner.models import ChunkConfig, RetrievalMode, RetrievalScope, UseCase
 
 console = Console()
 
@@ -64,6 +69,8 @@ def register(app: typer.Typer) -> None:
             False, "--generate-dataset", help=GENERATE_DATASET_HELP
         ),
         retrieval_scope: str = retrieval_scope_option(),
+        retrieval_mode: str | None = retrieval_mode_option(),
+        reranker: str | None = reranker_option(),
         no_cache: bool = typer.Option(False, "--no-cache", help=NO_CACHE_HELP),
     ) -> None:
         """Compare a small set of strategies on the same corpus."""
@@ -77,6 +84,8 @@ def register(app: typer.Typer) -> None:
             typer.echo("Provide at least one strategy in --strategies", err=True)
             raise typer.Exit(2)
         check_strategy_names(names, registry)
+        mode, rerank_spec = resolve_retrieval(ws, retrieval_mode, reranker)
+        rr = build_retrieval(mode, rerank_spec, yes=yes)
         cache_dir = workspace_cache_dir(ws)
         resolved_api_base, resolved_api_key = resolve_provider_config(ws)
         resolved_api_base = api_base or resolved_api_base
@@ -112,6 +121,7 @@ def register(app: typer.Typer) -> None:
             {n: registry.get(n).default_param_grid()[:1] for n in names},
             embedding_model=resolved_embedding_model,
             yes=yes,
+            retrieval_mode=mode,
         )
         ds = resolve_eval_dataset(
             docs,
@@ -136,8 +146,11 @@ def register(app: typer.Typer) -> None:
             llm_api_base=resolved_api_base,
             llm_api_key=resolved_api_key,
             retrieval_scope=cast(RetrievalScope, retrieval_scope),
+            retrieval_mode=cast(RetrievalMode, mode),
+            reranker=rr,
         )
         rows = []
+        results = []
         with Progress(
             SpinnerColumn(),
             TextColumn("{task.description}"),
@@ -149,6 +162,7 @@ def register(app: typer.Typer) -> None:
                 strat = registry.get(n)
                 cfg = ChunkConfig(name=n, params=strat.default_param_grid()[0])
                 res = ev.evaluate(strat, cfg, docs, ds, scorer=scorer)
+                results.append(res)
                 rows.append(
                     {
                         "strategy": n,
@@ -176,3 +190,4 @@ def register(app: typer.Typer) -> None:
                 lines.append("| " + " | ".join(str(r[k]) for k in rows[0].keys()) + " |\n")
             report.write_text("".join(lines), encoding="utf-8")
             typer.echo(f"Wrote {report}")
+        warn_reranker_overflow(results, rr)

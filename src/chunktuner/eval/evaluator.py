@@ -10,6 +10,7 @@ import tiktoken
 
 from chunktuner.config import DEFAULT_LLM_MODEL
 from chunktuner.eval.effective_k import compute_effective_k
+from chunktuner.eval.lexical import Bm25Index, rrf_fuse
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.models import (
     Chunk,
@@ -20,6 +21,8 @@ from chunktuner.models import (
     EvalDataset,
     EvalMetrics,
     EvalResult,
+    Reranker,
+    RetrievalMode,
     RetrievalScope,
 )
 
@@ -91,6 +94,8 @@ def _ndcg_at_k(rels: list[float], k: int) -> float:
 
 _RANK_KS: tuple[int, ...] = (1, 3, 5)
 
+_RETRIEVAL_MODES: tuple[str, ...] = ("dense", "bm25", "hybrid")
+
 
 def _ranking_metrics(rels: list[float]) -> tuple[dict[int, float], float, dict[int, float]]:
     """Per-query hit@k, reciprocal rank, and nDCG@k from a ranked binary relevance list.
@@ -118,6 +123,15 @@ class Evaluator:
         retrieval_scope: Which ranking feeds the score's ``mrr`` / ``recall_at_1`` when the
             evaluator builds its default `ScoreCalculator`. Both document-scope and
             corpus-scope ranking metrics are always computed and stored on `EvalMetrics`.
+        retrieval_mode: First-stage ranking for both scopes. ``dense`` (default) ranks by
+            embedding cosine similarity; ``bm25`` ranks by BM25 over all corpus chunks
+            (corpus-wide IDF; needs the ``bm25`` extra) and makes no embedding calls;
+            ``hybrid`` fuses the dense and BM25 rankings with reciprocal rank fusion.
+        reranker: Optional second stage. Per query it scores the top ``rerank_candidates``
+            chunks of each scope's first-stage ranking (one ``score`` call on their union)
+            and reorders those by reranker score; the rest keep first-stage order. Token
+            metrics and generation contexts use the reranked document-scope order.
+        rerank_candidates: How many first-stage chunks per scope the reranker reorders.
     """
 
     @staticmethod
@@ -145,7 +159,17 @@ class Evaluator:
         llm_api_key: str | None = None,
         ragas_bridge: object | None = None,
         retrieval_scope: RetrievalScope = "document",
+        retrieval_mode: RetrievalMode = "dense",
+        reranker: Reranker | None = None,
+        rerank_candidates: int = 20,
     ):
+        if retrieval_mode not in _RETRIEVAL_MODES:
+            raise ValueError(
+                f"retrieval_mode must be one of {', '.join(_RETRIEVAL_MODES)}; "
+                f"got {retrieval_mode!r}"
+            )
+        if rerank_candidates < 1:
+            raise ValueError(f"rerank_candidates must be >= 1, got {rerank_candidates}")
         self.embedding_fn = embedding_fn
         self.top_k = top_k
         wants_generation = enable_generation_metrics
@@ -166,6 +190,7 @@ class Evaluator:
                     "judge LLM key are skipped — use retrieval metrics only."
                 )
         self.llm_client = llm_client
+        self.encoding_name = encoding_name
         self._enc = tiktoken.get_encoding(encoding_name)
         self.context_budget_tokens = context_budget_tokens
         self.batch_size = batch_size
@@ -174,6 +199,9 @@ class Evaluator:
         self.llm_api_key = llm_api_key
         self.ragas_bridge = ragas_bridge
         self.retrieval_scope: RetrievalScope = retrieval_scope
+        self.retrieval_mode: RetrievalMode = retrieval_mode
+        self.reranker: Reranker | None = reranker
+        self.rerank_candidates = rerank_candidates
 
     def _llm_provider_kwargs(self) -> dict[str, str]:
         kw: dict[str, str] = {}
@@ -216,12 +244,20 @@ class Evaluator:
 
         self._validate_offsets_sample(all_chunks, docs_by_id)
 
-        t0 = time.perf_counter()
-        chunk_vecs = self._embed_batched([c.text for c in all_chunks])
-        q_texts = [q.question for q in dataset.queries]
-        q_vecs_arr = self._embed_batched(q_texts)
-        q_vecs: dict[str, np.ndarray] = {q.id: q_vecs_arr[i] for i, q in enumerate(dataset.queries)}
-        latency_ms = (time.perf_counter() - t0) * 1000
+        use_dense = self.retrieval_mode != "bm25"
+        use_bm25 = self.retrieval_mode != "dense"
+        latency_ms = 0.0
+        q_vecs: dict[str, np.ndarray] = {}
+        chunk_vecs: np.ndarray | None = None
+        if use_dense:
+            t0 = time.perf_counter()
+            chunk_vecs = self._embed_batched([c.text for c in all_chunks])
+            q_texts = [q.question for q in dataset.queries]
+            q_vecs_arr = self._embed_batched(q_texts)
+            q_vecs = {q.id: q_vecs_arr[i] for i, q in enumerate(dataset.queries)}
+            latency_ms = (time.perf_counter() - t0) * 1000
+        # One index over every corpus chunk so IDF is corpus-wide for both scopes.
+        bm25_index = Bm25Index([c.text for c in all_chunks]) if use_bm25 and all_chunks else None
 
         by_doc: dict[str, list[tuple[int, Chunk]]] = defaultdict(list)
         for idx, ch in enumerate(all_chunks):
@@ -240,7 +276,7 @@ class Evaluator:
         # Normalized vectors of every chunk, reused for corpus-scope ranking (no extra embeds).
         all_matn = (
             chunk_vecs / (np.linalg.norm(chunk_vecs, axis=1, keepdims=True) + _EPS)
-            if all_chunks
+            if all_chunks and chunk_vecs is not None
             else None
         )
         precs: list[float] = []
@@ -271,12 +307,12 @@ class Evaluator:
             if not pairs:
                 continue
             idxs = [p[0] for p in pairs]
-            mat = np.stack([chunk_vecs[i] for i in idxs])
-            qv = q_vecs[q.id]
-            qn = qv / (np.linalg.norm(qv) + _EPS)
-            matn = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + _EPS)
-            sims = matn @ qn
-            order = np.argsort(-sims)
+            # ``order``: positions into ``pairs`` best first; ``c_order``: corpus chunk indices.
+            order, c_order = self._first_stage_orders(
+                q.id, q.question, idxs, chunk_vecs, all_matn, q_vecs, bm25_index
+            )
+            if self.reranker is not None:
+                order, c_order = self._rerank(q.question, idxs, order, c_order, all_chunks)
             ranked_chunks = [pairs[int(j)][1] for j in order]
 
             eff_k = compute_effective_k(avg_chunk_len, self.context_budget_tokens)
@@ -298,7 +334,6 @@ class Evaluator:
                 idx: (1.0 if gold & _token_indices_for_chunk(bounds, ch) else 0.0)
                 for idx, ch in pairs
             }
-            c_order = np.argsort(-(all_matn @ qn))
             c_rels = [rel_by_idx.get(int(j), 0.0) for j in c_order]
             c_hits, c_rr, c_ndcg_q = _ranking_metrics(c_rels)
             for kk in _RANK_KS:
@@ -340,8 +375,15 @@ class Evaluator:
             avg_chunk_length=avg_chunk_len,
             chunk_length_std=chunk_std,
             embedding_latency_ms=latency_ms,
-            total_embedding_tokens=sum(len(self._enc.encode(c.text)) for c in all_chunks)
-            + sum(len(self._enc.encode(q.question)) for q in dataset.queries),
+            total_embedding_tokens=(
+                sum(len(self._enc.encode(c.text)) for c in all_chunks)
+                + sum(len(self._enc.encode(q.question)) for q in dataset.queries)
+                if use_dense
+                else 0
+            ),
+            retrieval_mode=self.retrieval_mode,
+            reranker=self.reranker.profile_name if self.reranker is not None else None,
+            reranker_overflow_ratio=self._overflow_ratio(tok_lens),
         )
 
         if self.enable_generation_metrics and topk_by_q:
@@ -361,6 +403,77 @@ class Evaluator:
             metrics=metrics,
             score=score,
         )
+
+    def _first_stage_orders(
+        self,
+        query_id: str,
+        query_text: str,
+        idxs: list[int],
+        chunk_vecs: np.ndarray | None,
+        all_matn: np.ndarray | None,
+        q_vecs: dict[str, np.ndarray],
+        bm25_index: Bm25Index | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Document-scope order (positions into ``idxs``) and corpus-scope order (chunk ids)."""
+        dense_order = dense_c_order = None
+        if self.retrieval_mode != "bm25":
+            assert chunk_vecs is not None and all_matn is not None
+            mat = np.stack([chunk_vecs[i] for i in idxs])
+            qv = q_vecs[query_id]
+            qn = qv / (np.linalg.norm(qv) + _EPS)
+            matn = mat / (np.linalg.norm(mat, axis=1, keepdims=True) + _EPS)
+            sims = matn @ qn
+            # Keep these exact argsort calls: the dense default must stay bit-identical.
+            dense_order = np.argsort(-sims)
+            dense_c_order = np.argsort(-(all_matn @ qn))
+            if self.retrieval_mode == "dense":
+                return dense_order, dense_c_order
+        assert bm25_index is not None
+        bm25_all = bm25_index.scores(query_text)
+        bm25_order = np.argsort(-bm25_all[np.asarray(idxs, dtype=np.int64)], kind="stable")
+        bm25_c_order = np.argsort(-bm25_all, kind="stable")
+        if self.retrieval_mode == "bm25":
+            return bm25_order, bm25_c_order
+        assert dense_order is not None and dense_c_order is not None
+        return rrf_fuse([dense_order, bm25_order]), rrf_fuse([dense_c_order, bm25_c_order])
+
+    def _rerank(
+        self,
+        query_text: str,
+        idxs: list[int],
+        order: np.ndarray,
+        c_order: np.ndarray,
+        all_chunks: list[Chunk],
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Reorder each scope's top ``rerank_candidates`` by reranker score (one call)."""
+        assert self.reranker is not None
+        n = self.rerank_candidates
+        doc_head = [int(j) for j in order[:n]]
+        c_head = [int(j) for j in c_order[:n]]
+        # Union of candidate chunk ids across both scopes, deduplicated in stable order.
+        cand = list(dict.fromkeys([idxs[j] for j in doc_head] + c_head))
+        scores = self.reranker.score(query_text, [all_chunks[i].text for i in cand])
+        if len(scores) != len(cand):
+            raise ValueError(
+                f"Reranker {self.reranker.profile_name!r} returned {len(scores)} scores "
+                f"for {len(cand)} documents"
+            )
+        by_chunk = dict(zip(cand, (float(s) for s in scores), strict=True))
+        # sorted() is stable: equal reranker scores keep their first-stage order.
+        new_doc_head = sorted(doc_head, key=lambda j: -by_chunk[idxs[j]])
+        new_c_head = sorted(c_head, key=lambda i: -by_chunk[i])
+        new_order = np.concatenate([np.asarray(new_doc_head, dtype=np.int64), order[n:]])
+        new_c_order = np.concatenate([np.asarray(new_c_head, dtype=np.int64), c_order[n:]])
+        return new_order, new_c_order
+
+    def _overflow_ratio(self, tok_lens: list[int]) -> float | None:
+        """Fraction of chunks longer than the reranker's input window (``None`` if unknown)."""
+        if self.reranker is None or not self.reranker.max_input_tokens:
+            return None
+        if not tok_lens:
+            return 0.0
+        limit = self.reranker.max_input_tokens
+        return sum(1 for t in tok_lens if t > limit) / len(tok_lens)
 
     def _apply_generation_metrics(
         self,

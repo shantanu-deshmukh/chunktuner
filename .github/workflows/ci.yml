@@ -14,7 +14,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     env:
       # Tests for these extras must FAIL (not skip) if the extra cannot be imported.
-      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp
+      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp,bm25
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: >-
           uv sync --python ${{ matrix.python-version }} --dev
-          --extra semantic --extra code --extra ragas --extra mcp
+          --extra semantic --extra code --extra ragas --extra mcp --extra bm25
 
       - name: Lint
         run: |
@@ -48,7 +48,7 @@ jobs:
   test-docling:
     runs-on: ubuntu-latest
     env:
-      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp,docling
+      CHUNKTUNER_REQUIRE_EXTRAS: semantic,code,ragas,mcp,bm25,docling,late
 
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +79,8 @@ jobs:
           NO_INSTALL="${LOCKED%%|*}"
           TORCH_PINS="${LOCKED##*|}"
           uv sync --python 3.12 --dev \
-            --extra semantic --extra code --extra ragas --extra mcp --extra docling \
+            --extra semantic --extra code --extra ragas --extra mcp --extra bm25 \
+            --extra docling --extra late \
             $NO_INSTALL
           uv pip install --python .venv --torch-backend cpu $TORCH_PINS
           uv run --no-sync python -c "import torch; print('torch', torch.__version__); assert '+cpu' in torch.__version__"
@@ -110,3 +111,32 @@ jobs:
         env:
           PYTHON: ${{ matrix.python-version }}
         run: ./scripts/check_latest_deps.sh
+
+  # The `late` extra (sentence-transformers + torch) is kept out of check_latest_deps.sh so
+  # the pre-push hook stays fast. This job installs the newest sentence-transformers allowed
+  # by pyproject.toml, ignoring uv.lock, with CPU-only torch, and runs the CrossEncoder
+  # API-shape and reranker tests. No model is downloaded.
+  test-latest-late:
+    runs-on: ubuntu-latest
+    env:
+      CHUNKTUNER_REQUIRE_EXTRAS: late
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install newest `late` extra (CPU-only torch)
+        run: |
+          uv venv --python 3.12 .venv-late
+          uv pip install --python .venv-late --refresh --torch-backend cpu ".[late]" pytest
+          .venv-late/bin/python -c "import sentence_transformers as s, transformers as t, torch; print('sentence-transformers', s.__version__, 'transformers', t.__version__, 'torch', torch.__version__)"
+
+      - name: Test
+        run: >-
+          .venv-late/bin/python -m pytest -q -p no:cacheprovider
+          tests/unit/test_crossencoder_api_shape.py tests/unit/test_rerankers.py

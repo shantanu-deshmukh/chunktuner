@@ -110,6 +110,18 @@ def test_dry_run_generate_dataset_reports_llm_tokens(corpus: Path) -> None:
     assert est["llm_model"]
 
 
+def test_dry_run_bm25_has_no_embedding_cost(corpus: Path) -> None:
+    from tests._extras import require_extra
+
+    require_extra("bm25", "bm25s")
+    dense = evaluate_chunking_impl(str(corpus), "rag_qa", dry_run=True)
+    assert dense["total_tokens"] > 0
+    est = evaluate_chunking_impl(str(corpus), "rag_qa", dry_run=True, retrieval_mode="bm25")
+    assert est["total_tokens"] == 0
+    assert est["embedding_cost_usd"] == 0.0
+    assert est["strategy_configs"] == dense["strategy_configs"]
+
+
 def test_generate_dataset_cached(corpus: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import litellm
 
@@ -146,3 +158,73 @@ def test_preview_content_type(corpus: Path) -> None:
     assert md
     with pytest.raises(ValueError):
         preview_chunks_impl("x", "fixed_tokens", {}, content_type="not-a-type")
+
+
+def test_retrieval_mode_validated(corpus: Path) -> None:
+    with pytest.raises(ValueError, match="retrieval_mode"):
+        evaluate_chunking_impl(str(corpus), "rag_qa", retrieval_mode="sparse")
+    with pytest.raises(ValueError, match="retrieval_mode"):
+        evaluate_chunking_impl(str(corpus), "rag_qa", retrieval_mode="sparse", dry_run=True)
+    with pytest.raises(ValueError, match="retrieval_mode"):
+        recommend_config_impl(str(corpus), "rag_qa", retrieval_mode="sparse")
+
+
+@pytest.mark.parametrize("spec", ["", "   ", "local:", "local:  "])
+def test_reranker_spec_validated(corpus: Path, spec: str) -> None:
+    with pytest.raises(ValueError, match="[Rr]eranker spec"):
+        evaluate_chunking_impl(str(corpus), "rag_qa", reranker=spec)
+    with pytest.raises(ValueError, match="[Rr]eranker spec"):
+        evaluate_chunking_impl(str(corpus), "rag_qa", reranker=spec, dry_run=True)
+    with pytest.raises(ValueError, match="[Rr]eranker spec"):
+        recommend_config_impl(str(corpus), "rag_qa", reranker=spec)
+
+
+def test_missing_bm25_extra_is_value_error(corpus: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "bm25s", None)  # makes ``import bm25s`` raise ImportError
+    for mode in ("bm25", "hybrid"):
+        with pytest.raises(ValueError, match="'bm25' extra"):
+            evaluate_chunking_impl(str(corpus), "rag_qa", retrieval_mode=mode)
+        with pytest.raises(ValueError, match="'bm25' extra"):
+            recommend_config_impl(str(corpus), "rag_qa", retrieval_mode=mode)
+
+
+def test_missing_reranker_extra_is_value_error(
+    corpus: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+    with pytest.raises(ValueError, match="'late' extra"):
+        evaluate_chunking_impl(
+            str(corpus), "rag_qa", strategies=["fixed_tokens"], reranker="local:some/model"
+        )
+
+
+def test_dense_dummy_reranker_metrics(corpus: Path) -> None:
+    out = evaluate_chunking_impl(
+        str(corpus), "rag_qa", strategies=["fixed_tokens"], reranker="dummy"
+    )
+    for r in out["results"]:
+        assert r["metrics"]["retrieval_mode"] == "dense"
+        assert r["metrics"]["reranker"] == "dummy/rerank"
+    plain = evaluate_chunking_impl(str(corpus), "rag_qa", strategies=["fixed_tokens"])
+    assert all(r["metrics"]["reranker"] is None for r in plain["results"])
+
+
+def test_recommend_hybrid_with_dummy_reranker(corpus: Path) -> None:
+    from tests._extras import require_extra
+
+    require_extra("bm25", "bm25s")
+    rec = recommend_config_impl(
+        str(corpus),
+        "rag_qa",
+        strategies=["fixed_tokens"],
+        retrieval_mode="hybrid",
+        reranker="dummy",
+    )
+    assert rec["best"]
+    metrics = rec["best"]["metrics"]
+    assert metrics["retrieval_mode"] == "hybrid"
+    assert metrics["reranker"] == "dummy/rerank"

@@ -9,6 +9,7 @@ def mp_evaluate_task(task: dict) -> dict:
     from chunktuner.chunking.bootstrap import build_full_registry
     from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingFunction
     from chunktuner.eval.evaluator import Evaluator
+    from chunktuner.eval.rerankers import reranker_from_spec
     from chunktuner.eval.score_calculator import ScoreCalculator
     from chunktuner.models import ChunkConfig, Document, EvalDataset
 
@@ -52,6 +53,16 @@ def mp_evaluate_task(task: dict) -> dict:
         llm_api_base=task.get("llm_api_base"),
         llm_api_key=task.get("llm_api_key"),
         retrieval_scope=task.get("retrieval_scope", "document"),
+        encoding_name=task.get("encoding_name", "cl100k_base"),
+        context_budget_tokens=int(task.get("context_budget_tokens", 2000)),
+        batch_size=int(task.get("batch_size", 64)),
+        retrieval_mode=task.get("retrieval_mode", "dense"),
+        reranker=reranker_from_spec(
+            task.get("reranker_spec"),
+            api_base=task.get("reranker_api_base"),
+            api_key=task.get("reranker_api_key"),
+        ),
+        rerank_candidates=int(task.get("rerank_candidates", 20)),
     )
     ucw = task.get("user_custom_weights")
     scorer = ScoreCalculator(

@@ -26,6 +26,8 @@ Optional: API keys for your embedding provider (e.g. `OPENAI_API_KEY`) when you 
 | `chunktuner[semantic]` | Semantic chunking strategies |
 | `chunktuner[code]` | Tree-sitter code strategies |
 | `chunktuner[mcp]` | MCP server (`chunk-tune-mcp`) |
+| `chunktuner[bm25]` | BM25 and hybrid retrieval (`--retrieval-mode bm25` or `hybrid`) |
+| `chunktuner[late]` | Local cross-encoder reranker (`--reranker local`) |
 | `chunktuner[all]` | All of the above |
 
 ```bash

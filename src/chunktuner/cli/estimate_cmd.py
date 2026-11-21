@@ -9,9 +9,13 @@ from chunktuner.cli.common import (
     USE_CASE_HELP,
     check_strategy_names,
     ingest_corpus,
+    is_paid_reranker_spec,
     load_workspace,
     max_docs_help,
     registry_for,
+    reranker_option,
+    resolve_retrieval,
+    retrieval_mode_option,
     select_supported_docs,
     tokenizer_encoding,
     validate_output_format,
@@ -19,6 +23,9 @@ from chunktuner.cli.common import (
 )
 from chunktuner.config import DEFAULT_EMBEDDING_MODEL
 from chunktuner.eval.cost_estimator import CostEstimator
+
+# Evaluator's default ``rerank_candidates`` (the CLI does not change it).
+RERANK_CANDIDATES = 20
 
 
 def register(app: typer.Typer) -> None:
@@ -47,6 +54,8 @@ def register(app: typer.Typer) -> None:
         llm_model: str | None = typer.Option(
             None, "--llm-model", help="LLM for dataset generation; default: workspace llm_model."
         ),
+        retrieval_mode: str | None = retrieval_mode_option(),
+        reranker: str | None = reranker_option(),
     ) -> None:
         """Estimate tokens, cost, and wall time (no API calls).
 
@@ -58,6 +67,7 @@ def register(app: typer.Typer) -> None:
         registry = registry_for(ws)
         names = [s.strip() for s in strategies.split(",") if s.strip()]
         check_strategy_names(names, registry)
+        mode, rerank_spec = resolve_retrieval(ws, retrieval_mode, reranker)
         docs, _root = ingest_corpus(path, ws)
         # Same doc selection as evaluate/compare/recommend: skip unsupported content types
         # (warning on stderr), exit 1 if none remain, then cap at max_docs.
@@ -73,6 +83,24 @@ def register(app: typer.Typer) -> None:
             generate_dataset=True,
             llm_model=(llm_model or ws.llm_model) if generate_dataset else None,
         )
+        notes: list[str] = []
+        if mode == "bm25":
+            # BM25 ranks lexically: no chunk or query is embedded.
+            est = est.model_copy(
+                update={
+                    "total_tokens": 0,
+                    "embedding_cost_usd": 0.0,
+                    "estimated_wall_time_min": 0.0,
+                }
+            )
+            notes.append("Retrieval mode bm25: no embedding calls are made.")
+        if is_paid_reranker_spec(rerank_spec):
+            notes.append(
+                f"Rerank requests (est., {rerank_spec}): ~1 per eval query per config "
+                f"({est.strategy_configs} configs), up to {2 * RERANK_CANDIDATES} documents each "
+                f"(top {RERANK_CANDIDATES} per document plus top {RERANK_CANDIDATES} corpus-wide) "
+                "(no price: LiteLLM has no rerank pricing table)."
+            )
         if output_format == "json":
             typer.echo(est.model_dump_json(indent=2, exclude_none=True))
         elif output_format == "yaml":
@@ -87,3 +115,6 @@ def register(app: typer.Typer) -> None:
                 typer.echo(f"LLM dataset tokens (est., {est.llm_model}): {est.llm_dataset_tokens}")
             typer.echo(f"Wall time (min est.): {est.estimated_wall_time_min}")
             typer.echo(f"Strategy-config combinations: {est.strategy_configs}")
+        for note in notes:
+            # Table mode: on stdout with the estimate; json / yaml: on stderr (stdout parses).
+            typer.echo(note, err=output_format != "table")

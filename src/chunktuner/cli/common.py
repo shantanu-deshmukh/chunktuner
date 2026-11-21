@@ -9,7 +9,7 @@ from typing import Any
 
 import typer
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -121,6 +121,112 @@ def retrieval_scope_option() -> Any:
         "--retrieval-scope",
         callback=_validate_retrieval_scope,
         help=f"{RETRIEVAL_SCOPE_HELP} [document|corpus]",
+    )
+
+
+RETRIEVAL_MODE_HELP = (
+    "First-stage retrieval (default: retrieval_mode in .autochunk.yaml, else dense): 'dense' "
+    "ranks by embeddings; 'bm25' ranks lexically and makes no embedding calls; 'hybrid' fuses "
+    "both. bm25 and hybrid need the 'bm25' extra."
+)
+RERANKER_HELP = (
+    "Optional second-stage reranker (default: reranker in .autochunk.yaml, else none): "
+    "'dummy' (free, lexical, for tests); 'local' or 'local:<hf-model-id>' (cross-encoder, "
+    "needs the 'late' extra, downloads a Hugging Face model); anything else is a LiteLLM "
+    "rerank model string, e.g. cohere/rerank-english-v3.0 (calls a paid API; its key comes "
+    "from the provider's env vars, not --api-base / --api-key)."
+)
+
+_RETRIEVAL_MODES = ("dense", "bm25", "hybrid")
+DEFAULT_RETRIEVAL_MODE = "dense"
+
+
+def _validate_retrieval_mode(value: str | None) -> str | None:
+    if value is not None and value not in _RETRIEVAL_MODES:
+        raise typer.BadParameter(f"must be one of: {', '.join(_RETRIEVAL_MODES)}")
+    return value
+
+
+def retrieval_mode_option() -> Any:
+    return typer.Option(
+        None,
+        "--retrieval-mode",
+        callback=_validate_retrieval_mode,
+        help=f"{RETRIEVAL_MODE_HELP} [dense|bm25|hybrid]",
+    )
+
+
+def _validate_reranker(value: str | None) -> str | None:
+    if value is None:
+        return None
+    from chunktuner.eval.rerankers import validate_reranker_spec
+
+    try:
+        return validate_reranker_spec(value)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from None
+
+
+def reranker_option() -> Any:
+    return typer.Option(None, "--reranker", callback=_validate_reranker, help=RERANKER_HELP)
+
+
+def is_paid_reranker_spec(spec: str | None) -> bool:
+    """True for a LiteLLM rerank spec (not ``dummy`` / ``local`` / ``local:<id>``)."""
+    return (
+        spec is not None and spec != "dummy" and spec != "local" and not spec.startswith("local:")
+    )
+
+
+def resolve_retrieval(
+    ws: WorkspaceConfig, retrieval_mode: str | None, reranker: str | None
+) -> tuple[str, str | None]:
+    """``(retrieval_mode, reranker spec)``: flag > yaml key > dense / no reranker."""
+    mode = ws_setting(ws, "retrieval_mode", retrieval_mode, DEFAULT_RETRIEVAL_MODE)
+    spec = ws_setting(ws, "reranker", reranker, None)
+    return mode, spec
+
+
+def build_retrieval(mode: str, spec: str | None, *, yes: bool) -> Any:
+    """Check the bm25 extra for ``mode`` and build the reranker for ``spec``.
+
+    Exits 1 with the install hint when an optional extra is missing. A LiteLLM rerank spec
+    asks for confirmation unless ``yes``; it gets no api_base / api_key (the embedding
+    provider's may belong to another provider), so LiteLLM reads the provider env vars.
+    """
+    from chunktuner.eval.lexical import Bm25Index
+    from chunktuner.eval.rerankers import reranker_from_spec
+
+    try:
+        if mode != "dense":
+            Bm25Index([])
+        if is_paid_reranker_spec(spec) and not yes:
+            typer.confirm(
+                f"Reranker {spec!r} calls an external rerank API (paid). Continue?",
+                default=False,
+                abort=True,
+            )
+        return reranker_from_spec(spec)
+    except ImportError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+
+def warn_reranker_overflow(results: list[Any], reranker: Any) -> None:
+    """Warn once if any result has chunks longer than the reranker's input window."""
+    ratios = [
+        r.metrics.reranker_overflow_ratio
+        for r in results
+        if r is not None and r.metrics.reranker_overflow_ratio
+    ]
+    if not ratios or reranker is None:
+        return
+    worst = max(ratios)
+    scope = "of chunks" if len(results) == 1 else "of chunks (worst config)"
+    warn(
+        f"{worst:.0%} {scope} exceed the reranker's input window "
+        f"({reranker.max_input_tokens} tokens, estimated with tiktoken); they are truncated "
+        "by the reranker."
     )
 
 
@@ -262,7 +368,18 @@ def configure_logging(ws: WorkspaceConfig) -> None:
 
 def load_workspace(config: Path | None) -> WorkspaceConfig:
     """Load ``.autochunk.yaml`` (``--config`` or cwd) and apply its ``log_level``."""
-    ws = load_workspace_config(load_workspace_path(config))
+    path = load_workspace_path(config)
+    try:
+        ws = load_workspace_config(path)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or 'config'}: {err['msg']}"
+            for err in exc.errors()
+        )
+        typer.secho(
+            f"Error: invalid {path or '.autochunk.yaml'}: {problems}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2) from None
     configure_logging(ws)
     return ws
 
@@ -420,13 +537,14 @@ def check_token_budget(
     *,
     embedding_model: str | None,
     yes: bool,
+    retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
 ) -> None:
-    """Enforce ``max_tokens_per_run`` (only when written in the yaml).
+    """Enforce ``max_tokens_per_run`` (only when written in the yaml; bm25 embeds nothing).
 
     Uses the same `CostEstimator` total (and workspace tokenizer) as ``chunk-tune estimate``.
     Over the cap: exit 1, or with ``--yes`` warn and continue.
     """
-    if "max_tokens_per_run" not in ws.model_fields_set:
+    if "max_tokens_per_run" not in ws.model_fields_set or retrieval_mode == "bm25":
         return
     from chunktuner.eval.cost_estimator import CostEstimator
 

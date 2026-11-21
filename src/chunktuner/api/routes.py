@@ -35,6 +35,8 @@ class EvaluateBody(BaseModel):
     dataset_path: str | None = None
     generate_dataset: bool = False
     retrieval_scope: Literal["document", "corpus"] = "document"
+    retrieval_mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    reranker: str | None = None
     use_cache: bool = True
 
 
@@ -49,6 +51,8 @@ class RecommendConfigBody(BaseModel):
     dataset_path: str | None = None
     generate_dataset: bool = False
     retrieval_scope: Literal["document", "corpus"] = "document"
+    retrieval_mode: Literal["dense", "bm25", "hybrid"] = "dense"
+    reranker: str | None = None
     use_cache: bool = True
 
 
@@ -85,6 +89,8 @@ def evaluate_chunking(body: EvaluateBody) -> dict:
             dataset_path=body.dataset_path,
             generate_dataset=body.generate_dataset,
             retrieval_scope=body.retrieval_scope,
+            retrieval_mode=body.retrieval_mode,
+            reranker=body.reranker,
             use_cache=body.use_cache,
         )
     except ValueError as e:
@@ -105,6 +111,8 @@ def recommend_config(body: RecommendConfigBody) -> dict:
             dataset_path=body.dataset_path,
             generate_dataset=body.generate_dataset,
             retrieval_scope=body.retrieval_scope,
+            retrieval_mode=body.retrieval_mode,
+            reranker=body.reranker,
             use_cache=body.use_cache,
         )
     except ValueError as e:

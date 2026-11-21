@@ -5,6 +5,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from chunktuner.chunking.registry import StrategyRegistry
 from chunktuner.eval.evaluator import Evaluator
+from chunktuner.eval.rerankers import LiteLLMReranker, reranker_spec
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.eval.trivial_dataset import trivial_dataset_for_docs
 from chunktuner.models import (
@@ -56,6 +57,15 @@ def _embed_task_fields(embedding_fn: object) -> dict:
             out["profile"] = getattr(inner, "profile_name", "dummy/test")
         return out
     return {"embed_type": "dummy", "profile": getattr(embedding_fn, "profile_name", "dummy/test")}
+
+
+def _rerank_task_fields(reranker: object | None) -> dict:
+    """Serialise an `Evaluator` reranker for process-pool workers (see `reranker_from_spec`)."""
+    out: dict[str, str | None] = {"reranker_spec": reranker_spec(reranker)}
+    if isinstance(reranker, LiteLLMReranker):
+        out["reranker_api_base"] = reranker.api_base
+        out["reranker_api_key"] = reranker.api_key
+    return out
 
 
 class AutoTuner:
@@ -208,6 +218,7 @@ class AutoTuner:
             docs_payload = [d.model_dump(mode="json") for d in sampled]
             ds_payload = ds.model_dump(mode="json")
             embed_fields = _embed_task_fields(self.evaluator.embedding_fn)
+            rerank_fields = _rerank_task_fields(self.evaluator.reranker)
             tasks = []
             for name, params in jobs:
                 tasks.append(
@@ -220,6 +231,11 @@ class AutoTuner:
                         "user_custom_weights": self.scorer.user_custom_weights,
                         "score_retrieval_scope": self.scorer.retrieval_scope,
                         "retrieval_scope": self.evaluator.retrieval_scope,
+                        "retrieval_mode": self.evaluator.retrieval_mode,
+                        "rerank_candidates": self.evaluator.rerank_candidates,
+                        "encoding_name": self.evaluator.encoding_name,
+                        "context_budget_tokens": self.evaluator.context_budget_tokens,
+                        "batch_size": self.evaluator.batch_size,
                         "top_k": self.evaluator.top_k,
                         "enable_generation_metrics": self.evaluator.enable_generation_metrics,
                         "llm_answer_model": self.evaluator.llm_answer_model,
@@ -227,6 +243,7 @@ class AutoTuner:
                         "llm_api_key": self.evaluator.llm_api_key,
                         "encoding": self.encoding_name,
                         **embed_fields,
+                        **rerank_fields,
                     }
                 )
             with ProcessPoolExecutor(max_workers=max_workers) as pool:

@@ -74,6 +74,8 @@ Dry-run **token, cost, and wall-time** estimates using `CostEstimator` — no AP
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
 | `--generate-dataset` | bool | false | Also estimate LLM eval-dataset generation (adds `llm_model` and `llm_dataset_tokens`; `llm_cost_usd` uses that model's pricing) |
 | `--llm-model` | string | none | LLM to estimate for `--generate-dataset`; default is workspace `llm_model` |
+| `--retrieval-mode` | choice | `dense` (or `retrieval_mode` in YAML) | With `bm25`, embedding tokens, cost and wall time are reported as 0 and a note says no embedding calls are made |
+| `--reranker` | string | none (or `reranker` in YAML) | With a LiteLLM rerank model, adds a note estimating rerank requests (about 1 per eval query per config); they are not priced |
 
 ```bash
 chunk-tune estimate ./docs --strategies fixed_tokens,recursive_character
@@ -110,6 +112,8 @@ Runs the evaluator for each strategy × default param grid. Uses **dummy embeddi
 | `--dataset` | path | none | JSON/YAML eval dataset (`queries`: `question`, `document_id`, `answer_spans`, optional `reference_answer`). `document_id` may be the file path relative to `path`, an absolute path, or the file name. Mutually exclusive with `--generate-dataset` |
 | `--generate-dataset` | bool | false | Generate questions with the resolved `--llm-model`; prompts unless `--yes`; cached under `cache_dir/datasets/` and reused for the same documents, model and settings. Run `estimate --generate-dataset` first |
 | `--retrieval-scope` | choice | `document` | `document` or `corpus`: which ranking feeds the score's rank metrics (`mrr`, `recall@1`) |
+| `--retrieval-mode` | choice | `dense` (or `retrieval_mode` in YAML) | First-stage retrieval: `dense` (embeddings), `bm25` (lexical BM25, no embedding calls) or `hybrid` (dense and BM25 fused with reciprocal rank fusion, k = 60). `bm25` and `hybrid` need the `bm25` extra |
+| `--reranker` | string | none (or `reranker` in YAML) | Optional second stage that reorders the top 20 first-stage chunks of each ranking per query (one rerank call per query; effective k unchanged; token metrics use the reranked order): `dummy` (free, lexical, for tests), `local` (`cross-encoder/ms-marco-MiniLM-L6-v2`) or `local:<hf-model-id>` (local cross-encoder; needs the `late` extra, downloads the model), or any other string as a LiteLLM rerank model, e.g. `cohere/rerank-english-v3.0` (paid; prompts unless `--yes`; credentials come from the provider's env vars, not `--api-base` / `--api-key`). Warns on stderr when chunks exceed the reranker's input window |
 | `--no-cache` | bool | false | Disable the SQLite embedding cache (`cache_dir/chunktuner_cache.sqlite`); dummy embeddings are never cached |
 
 Without `--dataset` or `--generate-dataset`, a placeholder dataset is used (one query per document, whose answer is the first 200 characters) and a warning is printed on stderr.
@@ -117,6 +121,7 @@ Without `--dataset` or `--generate-dataset`, a placeholder dataset is used (one 
 ```bash
 chunk-tune evaluate ./samples --output-format json
 chunk-tune evaluate ./samples --dataset questions.yaml --retrieval-scope corpus
+chunk-tune evaluate ./samples --dataset questions.yaml --retrieval-mode hybrid --reranker local
 ```
 
 ```text
@@ -145,7 +150,7 @@ Full **AutoTuner** grid over strategies and default (or filtered) param grids; p
 | `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip paid-call confirmation |
 | `--no-baseline` | bool | false | Skip the baseline run (`fixed_tokens` 512/0, or `code_window` 512/0 for code) |
-| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--no-cache` | | | Same as `evaluate` |
+| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--retrieval-mode`, `--reranker`, `--no-cache` | | | Same as `evaluate` |
 
 ```bash
 chunk-tune recommend ./samples --no-baseline
@@ -171,7 +176,7 @@ Side-by-side comparison using the **first** default param set per strategy. Rich
 | `--api-key` | string | none | Same as `evaluate` |
 | `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip confirmation |
-| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--no-cache` | | | Same as `evaluate` |
+| `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--retrieval-mode`, `--reranker`, `--no-cache` | | | Same as `evaluate` |
 
 ```bash
 chunk-tune compare ./samples --strategies fixed_tokens,recursive_character --report cmp.md

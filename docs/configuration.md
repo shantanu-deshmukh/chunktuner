@@ -18,11 +18,15 @@ Created in the **current directory** by `chunk-tune init`. Merged at runtime wit
 | `cache_dir` | string | `~/.cache/chunktuner` | SQLite and cache root |
 | `log_level` | string | `INFO` | Level for `chunktuner` loggers in CLI commands (stderr); not used by the MCP server |
 | `strip_patterns` | list of string | `[]` | Regex patterns removed from every document at ingest (`evaluate` / `compare` / `recommend` / `estimate` / `preview`); chunk offsets refer to the stripped text |
-| `tokenizer_encoding` | string | `cl100k_base` | tiktoken encoding for chunking, evaluation, and `analyze` / `preview` / `estimate` token counts (including the `max_tokens_per_run` check and parallel `recommend` workers) |
+| `tokenizer_encoding` | string | `cl100k_base` | tiktoken encoding for chunking, evaluation, and `analyze` / `preview` / `estimate` token counts (including the `max_tokens_per_run` check and `AutoTuner(parallel=True)` workers) |
+| `retrieval_mode` | string | `dense` | First-stage retrieval for `evaluate` / `compare` / `recommend` / `estimate` when `--retrieval-mode` is not passed: `dense`, `bm25` (no embedding calls; skips the `max_tokens_per_run` check) or `hybrid`. `bm25` and `hybrid` need the `bm25` extra |
+| `reranker` | string or null | `null` | Reranker spec used when `--reranker` is not passed: `dummy`, `local`, `local:<hf-model-id>` or a LiteLLM rerank model string (paid; key from the provider's env vars). `null` means no reranking |
 
 `analyze`, `preview`, `estimate`, `evaluate`, `recommend`, `compare` and `cache` accept `--config /path/to/.autochunk.yaml` to point elsewhere.
 
 Precedence: CLI flag > key present in `.autochunk.yaml` > command default. `chunk-tune init` writes `use_case`, `max_docs: 100`, `max_tokens_per_run: 250000` and `log_level: INFO`, so in an init-created workspace those values apply.
+
+An `.autochunk.yaml` with an invalid value (for example an unknown `retrieval_mode` or an empty `reranker`) makes the command exit 2 with `Error: invalid <path>: <key>: <problem>` on stderr.
 
 ---
 

@@ -56,6 +56,28 @@ RetrievalScopeArg = Annotated[
         )
     ),
 ]
+RetrievalModeArg = Annotated[
+    Literal["dense", "bm25", "hybrid"],
+    Field(
+        description=(
+            "First-stage retrieval for the rank metrics: 'dense' (embedding similarity), "
+            "'bm25' (lexical BM25) or 'hybrid' (dense + BM25 fused with reciprocal rank "
+            "fusion). 'bm25' and 'hybrid' need the optional 'bm25' extra."
+        )
+    ),
+]
+RerankerArg = Annotated[
+    str | None,
+    Field(
+        description=(
+            "Optional second-stage reranker spec: 'dummy' (deterministic lexical overlap, no "
+            "cost), 'local' or 'local:<hf-model-id>' (runs a local CrossEncoder and downloads "
+            "the model; needs the optional 'late' extra), or any other string as a LiteLLM "
+            "rerank model (e.g. 'cohere/rerank-v3.5'; uses the provider's env vars and may "
+            "cost money). Default: no reranker."
+        )
+    ),
+]
 UseCache = Annotated[
     bool,
     Field(description="Use the SQLite embedding cache for real embedding models."),
@@ -118,6 +140,8 @@ def register_tools(mcp: object) -> None:
         dataset_path: DatasetPath = None,
         generate_dataset: GenerateDataset = False,
         retrieval_scope: RetrievalScopeArg = "document",
+        retrieval_mode: RetrievalModeArg = "dense",
+        reranker: RerankerArg = None,
         use_cache: UseCache = True,
     ) -> dict:
         """Dry-run cost estimate or full evaluation (``DummyEmbeddingFunction`` if no model).
@@ -141,6 +165,8 @@ def register_tools(mcp: object) -> None:
                     dataset_path=dataset_path,
                     generate_dataset=generate_dataset,
                     retrieval_scope=retrieval_scope,
+                    retrieval_mode=retrieval_mode,
+                    reranker=reranker,
                     use_cache=use_cache,
                 )
                 _log_tool("evaluate_chunking", t0, True)
@@ -161,6 +187,8 @@ def register_tools(mcp: object) -> None:
         dataset_path: DatasetPath = None,
         generate_dataset: GenerateDataset = False,
         retrieval_scope: RetrievalScopeArg = "document",
+        retrieval_mode: RetrievalModeArg = "dense",
+        reranker: RerankerArg = None,
         use_cache: UseCache = True,
     ) -> dict:
         """Run tuner and return ranked ``Recommendation`` (uses dummy embeddings by default).
@@ -183,6 +211,8 @@ def register_tools(mcp: object) -> None:
                     dataset_path=dataset_path,
                     generate_dataset=generate_dataset,
                     retrieval_scope=retrieval_scope,
+                    retrieval_mode=retrieval_mode,
+                    reranker=reranker,
                     use_cache=use_cache,
                 )
                 _log_tool("recommend_config", t0, True)

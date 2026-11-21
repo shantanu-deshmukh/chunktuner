@@ -24,6 +24,7 @@ from chunktuner.eval.dataset_sources import (
 )
 from chunktuner.eval.embeddings import DummyEmbeddingFunction, LiteLLMEmbeddingFunction
 from chunktuner.eval.evaluator import Evaluator
+from chunktuner.eval.rerankers import reranker_from_spec, validate_reranker_spec
 from chunktuner.eval.score_calculator import ScoreCalculator
 from chunktuner.eval.trivial_dataset import trivial_dataset_for_docs
 from chunktuner.ingestion.file_ingestor import FileIngestor
@@ -32,6 +33,8 @@ from chunktuner.models import (
     Document,
     EmbeddingFunction,
     EvalDataset,
+    Reranker,
+    RetrievalMode,
     RetrievalScope,
     UseCase,
 )
@@ -85,6 +88,37 @@ def mcp_cache_dir() -> Path:
 def _check_retrieval_scope(retrieval_scope: str) -> None:
     if retrieval_scope not in ("document", "corpus"):
         raise ValueError(f"retrieval_scope must be 'document' or 'corpus', got {retrieval_scope!r}")
+
+
+def _check_retrieval_mode(retrieval_mode: str) -> None:
+    """Validate ``retrieval_mode``; ``bm25``/``hybrid`` also need the optional ``bm25`` extra."""
+    if retrieval_mode not in ("dense", "bm25", "hybrid"):
+        raise ValueError(
+            f"retrieval_mode must be 'dense', 'bm25' or 'hybrid', got {retrieval_mode!r}"
+        )
+    if retrieval_mode != "dense":
+        try:
+            import bm25s  # noqa: F401
+        except ImportError as exc:
+            raise ValueError(
+                f"retrieval_mode={retrieval_mode!r} needs the optional 'bm25' extra: "
+                "uv add 'chunktuner[bm25]' or pip install 'chunktuner[bm25]'"
+            ) from exc
+
+
+def _check_reranker(reranker: str | None) -> str | None:
+    """Validate a reranker spec string without building it (``None`` = no reranker)."""
+    if reranker is None:
+        return None
+    return validate_reranker_spec(reranker)
+
+
+def _build_reranker(reranker: str | None) -> Reranker | None:
+    """Build the reranker; a missing optional extra becomes a ``ValueError`` (tool error)."""
+    try:
+        return reranker_from_spec(reranker)
+    except ImportError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _check_dataset_args(dataset_path: str | None, generate_dataset: bool) -> Path | None:
@@ -227,6 +261,8 @@ def evaluate_chunking_impl(
     dataset_path: str | None = None,
     generate_dataset: bool = False,
     retrieval_scope: str = "document",
+    retrieval_mode: str = "dense",
+    reranker: str | None = None,
     use_cache: bool = True,
 ) -> dict:
     """Evaluate strategies' default grids (or estimate cost with ``dry_run``).
@@ -242,6 +278,8 @@ def evaluate_chunking_impl(
         raise ValueError("path does not exist")
     dataset_file = _check_dataset_args(dataset_path, generate_dataset)
     _check_retrieval_scope(retrieval_scope)
+    _check_retrieval_mode(retrieval_mode)
+    reranker_spec = _check_reranker(reranker)
     if strategies is not None:
         _validate_strategies(strategies)
     reg = build_full_registry()
@@ -264,6 +302,15 @@ def evaluate_chunking_impl(
             embedding_model or "text-embedding-3-small",
             llm_model=_MCP_LLM_MODEL if generate_dataset else None,
         )
+        if retrieval_mode == "bm25":
+            # BM25 ranks lexically: no chunk or query is embedded (same as the CLI estimate).
+            est = est.model_copy(
+                update={
+                    "total_tokens": 0,
+                    "embedding_cost_usd": 0.0,
+                    "estimated_wall_time_min": 0.0,
+                }
+            )
         out = est.model_dump(exclude_none=True)
         if skipped:
             out["warnings"] = skipped
@@ -280,6 +327,8 @@ def evaluate_chunking_impl(
         llm_api_base=_MCP_API_BASE,
         llm_api_key=_MCP_API_KEY,
         retrieval_scope=scope,
+        retrieval_mode=cast(RetrievalMode, retrieval_mode),
+        reranker=_build_reranker(reranker_spec),
     )
     scorer = ScoreCalculator(cast(UseCase, use_case), retrieval_scope=scope)
     results = []
@@ -307,6 +356,8 @@ def recommend_config_impl(
     dataset_path: str | None = None,
     generate_dataset: bool = False,
     retrieval_scope: str = "document",
+    retrieval_mode: str = "dense",
+    reranker: str | None = None,
     use_cache: bool = True,
 ) -> dict:
     """Run the tuner; ``generate_dataset`` has no prompt — estimate via evaluate dry_run first."""
@@ -315,6 +366,8 @@ def recommend_config_impl(
         raise ValueError("path does not exist")
     dataset_file = _check_dataset_args(dataset_path, generate_dataset)
     _check_retrieval_scope(retrieval_scope)
+    _check_retrieval_mode(retrieval_mode)
+    reranker_spec = _check_reranker(reranker)
     if strategies is not None:
         _validate_strategies(strategies)
     embed = _embedding_fn(embedding_model, use_cache)
@@ -330,6 +383,8 @@ def recommend_config_impl(
             llm_api_base=_MCP_API_BASE,
             llm_api_key=_MCP_API_KEY,
             retrieval_scope=scope,
+            retrieval_mode=cast(RetrievalMode, retrieval_mode),
+            reranker=_build_reranker(reranker_spec),
         ),
         ScoreCalculator(uc, retrieval_scope=scope),
     )

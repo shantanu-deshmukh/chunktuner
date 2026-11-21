@@ -73,6 +73,8 @@ chunk-tune recommend ./my_docs --use-case rag_qa
 Other evaluation flags:
 
 - `--retrieval-scope document|corpus`: which ranking feeds the score's rank metrics. The default is `document`.
+- `--retrieval-mode dense|bm25|hybrid`: first-stage retrieval. `dense` (default) ranks by embeddings, `bm25` ranks lexically and makes no embedding calls, `hybrid` fuses both with reciprocal rank fusion. `bm25` and `hybrid` need the `bm25` extra.
+- `--reranker <spec>`: optional second stage that reorders the top 20 first-stage chunks per query. `dummy` (free, for tests), `local` or `local:<hf-model-id>` (local cross-encoder; needs the `late` extra and downloads the model), or any other string as a LiteLLM rerank model, e.g. `cohere/rerank-english-v3.0` (paid API; the command asks for confirmation unless you pass `--yes`).
 - `--no-cache`: turn off the embedding cache, which is on by default for real embedding models.
 - `--top-k` has no effect on metrics. Retrieval depth is a 2000-token context budget divided by the average chunk size.
 
@@ -173,7 +175,7 @@ Add to your `.mcp.json`:
 }
 ```
 
-Tools available: `list_strategies`, `preview_chunks`, `evaluate_chunking`, `recommend_config`. `evaluate_chunking` and `recommend_config` accept optional `dataset_path`, `generate_dataset`, `retrieval_scope` and `use_cache` fields, and their responses include a `warnings` list. See [docs/mcp_setup.md](docs/mcp_setup.md).
+Tools available: `list_strategies`, `preview_chunks`, `evaluate_chunking`, `recommend_config`. `evaluate_chunking` and `recommend_config` accept optional `dataset_path`, `generate_dataset`, `retrieval_scope`, `retrieval_mode`, `reranker` and `use_cache` fields, and their responses include a `warnings` list. See [docs/mcp_setup.md](docs/mcp_setup.md).
 
 ---
 
@@ -206,6 +208,8 @@ uv add "chunktuner[docling]"           # PDF/DOCX support
 uv add "chunktuner[ragas]"             # generation metrics (Python API only)
 uv add "chunktuner[semantic]"          # semantic chunking
 uv add "chunktuner[code]"              # AST code chunking
+uv add "chunktuner[bm25]"              # BM25 / hybrid retrieval
+uv add "chunktuner[late]"              # local cross-encoder reranker
 uv add "chunktuner[all]"               # everything
 ```
 

@@ -79,6 +79,17 @@ result = ev.evaluate(strategy, cfg, docs, ds, scorer=scorer)
 
 Enable generation metrics and supply a `RagasBridge` on the evaluator when using RAGAS (see below).
 
+`retrieval_mode` picks the first-stage ranking: `"dense"` (default, embedding cosine similarity), `"bm25"` (lexical BM25 over all corpus chunks with corpus-wide IDF; makes no embedding calls) or `"hybrid"` (dense and BM25 fused with reciprocal rank fusion, k = 60). `bm25` and `hybrid` need `chunktuner[bm25]`; BM25 lowercases, drops English stopwords, does not stem, and its default tokenizer drops 1-character words, so it is approximate for code and CJK text. An optional `reranker` (any object following the `Reranker` protocol in `chunktuner.models`) reorders the top `rerank_candidates` (default 20) first-stage chunks of each ranking with one `score` call per query; effective k is unchanged and token metrics use the reranked order. The defaults (dense, no reranker) leave scores unchanged.
+
+```python
+from chunktuner.eval.rerankers import reranker_from_spec
+
+reranker = reranker_from_spec("local")  # or "dummy", "local:<hf-model-id>", a LiteLLM rerank model
+ev = Evaluator(DummyEmbeddingFunction(), retrieval_mode="hybrid", reranker=reranker)
+```
+
+`reranker_from_spec` builds `DummyReranker` for `"dummy"`, `CrossEncoderReranker` for `"local"` (`cross-encoder/ms-marco-MiniLM-L6-v2`) or `"local:<hf-model-id>"` (needs `chunktuner[late]`; downloads the model on first use), and `LiteLLMReranker` for any other string (calls the provider's rerank API, which may cost money). `EvalMetrics.reranker_overflow_ratio` reports the share of chunks longer than the reranker's input window.
+
 ### `ScoreCalculator`
 
 Wraps `EvalMetrics` with use-case weights from `chunktuner.config.score_profile_weights` unless you pass `custom_weights`.
@@ -108,7 +119,7 @@ rec = tuner.recommend(
 )
 ```
 
-With `strategies=None`, every strategy compatible with the content type runs except the explicit-only `late_chunking` and `agentic`. Pass `encoding_name=` (default `cl100k_base`) to match a non-default `tokenizer_encoding` when `parallel=True`.
+With `strategies=None`, every strategy compatible with the content type runs except the explicit-only `late_chunking` and `agentic`. Pass `encoding_name=` (default `cl100k_base`) to match a non-default `tokenizer_encoding` when `parallel=True`. Parallel workers rebuild the evaluator with its `encoding_name`, `context_budget_tokens`, `batch_size`, `retrieval_mode`, `reranker` and `rerank_candidates`; only the built-in rerankers (`DummyReranker`, `CrossEncoderReranker`, `LiteLLMReranker`) can be sent to them.
 
 `parallel=True` uses a process pool; embedding payloads must be picklable (see the `AutoTuner` / parallel evaluation notes in the [API reference](api/tuner/auto_tuner.md)).
 

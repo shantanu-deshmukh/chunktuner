@@ -106,3 +106,63 @@ def test_api_token_auth_blocks_without_bearer(
     assert r_ok.status_code == 200
     r_health = tc.get("/health")
     assert r_health.status_code == 200
+
+
+def test_evaluate_chunking_dummy_reranker(client: tuple[TestClient, Path, Path]) -> None:
+    c, _, corpus = client
+    r = c.post(
+        "/evaluate_chunking",
+        json={"path": str(corpus), "strategies": ["fixed_tokens"], "reranker": "dummy"},
+    )
+    assert r.status_code == 200
+    for res in r.json()["results"]:
+        assert res["metrics"]["retrieval_mode"] == "dense"
+        assert res["metrics"]["reranker"] == "dummy/rerank"
+
+
+def test_evaluate_chunking_bm25_mode(client: tuple[TestClient, Path, Path]) -> None:
+    from tests._extras import require_extra
+
+    require_extra("bm25", "bm25s")
+    c, _, corpus = client
+    r = c.post(
+        "/evaluate_chunking",
+        json={"path": str(corpus), "strategies": ["fixed_tokens"], "retrieval_mode": "bm25"},
+    )
+    assert r.status_code == 200
+    assert all(res["metrics"]["retrieval_mode"] == "bm25" for res in r.json()["results"])
+
+
+def test_evaluate_chunking_invalid_retrieval_mode(client: tuple[TestClient, Path, Path]) -> None:
+    c, _, corpus = client
+    r = c.post("/evaluate_chunking", json={"path": str(corpus), "retrieval_mode": "sparse"})
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("route", ["/evaluate_chunking", "/recommend_config"])
+def test_invalid_reranker_spec(client: tuple[TestClient, Path, Path], route: str) -> None:
+    c, _, corpus = client
+    r = c.post(route, json={"path": str(corpus), "reranker": "local:"})
+    assert r.status_code == 400
+    assert "local:" in r.json()["detail"]
+
+
+def test_recommend_config_hybrid_dummy_reranker(client: tuple[TestClient, Path, Path]) -> None:
+    from tests._extras import require_extra
+
+    require_extra("bm25", "bm25s")
+    c, _, corpus = client
+    r = c.post(
+        "/recommend_config",
+        json={
+            "path": str(corpus),
+            "strategies": ["fixed_tokens"],
+            "max_docs": 2,
+            "retrieval_mode": "hybrid",
+            "reranker": "dummy",
+        },
+    )
+    assert r.status_code == 200
+    best = r.json()["best"]["metrics"]
+    assert best["retrieval_mode"] == "hybrid"
+    assert best["reranker"] == "dummy/rerank"

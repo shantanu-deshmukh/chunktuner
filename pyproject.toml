@@ -41,7 +41,9 @@ docling = ["docling>=2.0"]
 ragas = ["ragas>=0.3.2,<0.4", "datasets>=2.14.7"]
 semantic = ["semchunk>=1.0"]
 code = ["tree-sitter>=0.22", "tree-sitter-python", "tree-sitter-javascript"]
-all = ["chunktuner[mcp,docling,ragas,semantic,code]"]
+bm25 = ["bm25s>=0.3.16,<0.4"]
+late = ["sentence-transformers>=5.2,<7"]
+all = ["chunktuner[mcp,docling,ragas,semantic,code,bm25,late]"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-gen-files>=0.5",

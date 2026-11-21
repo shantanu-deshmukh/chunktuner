@@ -70,6 +70,8 @@ def _rename_key(d: dict[str, Any], old: str, new: str) -> dict[str, Any]:
 
 # D6: new optional corpus-scope fields on EvalMetrics (not in the recorded baseline).
 CORPUS_SCOPE_METRIC_KEYS = ("corpus_recall_at_k", "corpus_mrr", "corpus_ndcg_at_k")
+# D17: new optional retrieval-pipeline fields on EvalMetrics (not in the recorded baseline).
+RETRIEVAL_PIPELINE_METRIC_KEYS = ("retrieval_mode", "reranker", "reranker_overflow_ratio")
 
 
 def _normalize_snapshot(snap: dict[str, Any]) -> dict[str, Any]:
@@ -79,6 +81,10 @@ def _normalize_snapshot(snap: dict[str, Any]) -> dict[str, Any]:
     # test_corpus_scope_metrics_present.
     for entry in snap["eval"].values():
         for key in CORPUS_SCOPE_METRIC_KEYS:
+            entry["metrics"].pop(key, None)
+        # D17: retrieval pipeline fields — the default (dense, no reranker) path is unchanged,
+        # so only these new keys differ; strip them before comparing.
+        for key in RETRIEVAL_PIPELINE_METRIC_KEYS:
             entry["metrics"].pop(key, None)
     # D20: code recommend is compared structurally, not exactly (see _apply_known_changes).
     snap["recommend"].pop("code", None)

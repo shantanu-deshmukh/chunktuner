@@ -21,6 +21,8 @@ Module-level API generated from docstrings. For usage patterns, see [Python API]
 - [`chunktuner.eval.cost_estimator`](eval/cost_estimator.md)
 - [`chunktuner.eval.embeddings`](eval/embeddings.md)
 - [`chunktuner.eval.ragas_bridge`](eval/ragas_bridge.md)
+- [`chunktuner.eval.lexical`](eval/lexical.md)
+- [`chunktuner.eval.rerankers`](eval/rerankers.md)
 - [`chunktuner.ingestion.file_ingestor`](ingestion/file_ingestor.md)
 - [`chunktuner.ingestion.url_ingestor`](ingestion/url_ingestor.md)
 - [`chunktuner.ingestion.repo_ingestor`](ingestion/repo_ingestor.md)

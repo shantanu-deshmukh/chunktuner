@@ -37,6 +37,8 @@ PUBLIC_MODULES = [
     ("eval.cost_estimator", "src/chunktuner/eval/cost_estimator.py"),
     ("eval.embeddings", "src/chunktuner/eval/embeddings.py"),
     ("eval.ragas_bridge", "src/chunktuner/eval/ragas_bridge.py"),
+    ("eval.lexical", "src/chunktuner/eval/lexical.py"),
+    ("eval.rerankers", "src/chunktuner/eval/rerankers.py"),
     ("ingestion.file_ingestor", "src/chunktuner/ingestion/file_ingestor.py"),
     ("ingestion.url_ingestor", "src/chunktuner/ingestion/url_ingestor.py"),
     ("ingestion.repo_ingestor", "src/chunktuner/ingestion/repo_ingestor.py"),

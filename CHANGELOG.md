@@ -13,6 +13,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `semantic` strategy: `min_tokens` now merges chunks smaller than that into a neighbour
   (default 0: off).
 - `analyze` and `preview` accept `--config`.
+- Retrieval pipeline options. `--retrieval-mode dense|bm25|hybrid` on `evaluate`, `compare`,
+  `recommend` and `estimate` (`.autochunk.yaml`: `retrieval_mode`; MCP / HTTP:
+  `retrieval_mode`; Python: `Evaluator(retrieval_mode=...)`). `bm25` ranks with BM25 over
+  all corpus chunks and makes no embedding calls; `hybrid` fuses dense and BM25 rankings
+  with reciprocal rank fusion (k = 60). The default `dense` leaves scores unchanged.
+- Optional second-stage reranking: `--reranker` (`.autochunk.yaml`: `reranker`; MCP / HTTP:
+  `reranker`; Python: `Evaluator(reranker=..., rerank_candidates=20)`) reorders the top 20
+  first-stage chunks per query. Specs: `dummy`, `local` / `local:<hf-model-id>` (local
+  cross-encoder, default `cross-encoder/ms-marco-MiniLM-L6-v2`) or a LiteLLM rerank model
+  string. The CLI asks for confirmation before a LiteLLM (paid) reranker unless `--yes`.
+  New `Reranker` protocol and `chunktuner.eval.rerankers` / `chunktuner.eval.lexical`
+  modules.
+- Optional extras `bm25` (`bm25s`) and `late` (`sentence-transformers`, for the local
+  reranker); both are included in `all`.
+- `EvalMetrics.retrieval_mode`, `reranker` and `reranker_overflow_ratio` (share of chunks
+  longer than the reranker's input window); the CLI warns on stderr when the ratio is above 0.
+- `estimate` notes that `bm25` makes no embedding calls (embedding tokens, cost and wall time
+  0) and, for a LiteLLM reranker, estimates the rerank requests (not priced). With `bm25`
+  the `max_tokens_per_run` check is skipped.
 
 ### Changed
 
@@ -40,11 +59,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `cache stats --model` and `cache clear --model` now act only on that model's embeddings
   (the cache records the model for new rows; rows from earlier versions are only included
   without `--model`).
+- An invalid `.autochunk.yaml` value now exits 2 with `Error: invalid <path>: <key>: <problem>`
+  instead of a traceback.
 
 ### Fixed
 
 - `estimate`, the `max_tokens_per_run` check and parallel tuner workers ignored
   `tokenizer_encoding` and always counted with `cl100k_base`.
+- Parallel tuner workers (`AutoTuner(parallel=True)`) built their evaluator
+  with default settings: they counted tokens with `cl100k_base` even with `tokenizer_encoding:
+  o200k_base`, and ignored the evaluator's `context_budget_tokens` and `batch_size`.
 - `estimate` crashed on unknown strategy names; it now exits with an error message.
 - `estimate` under-reported embedding cost 1000× for models priced in litellm's model table
   (for example, 0.0 instead of 0.0004 USD for the test fixtures).

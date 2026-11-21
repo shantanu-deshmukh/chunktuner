@@ -7,8 +7,10 @@
 # locked tests, so this script installs the package the way users do, into throwaway
 # venvs, without the lockfile:
 #   1. core   — `chunktuner` with no extras: the CLI must start and run `recommend`.
-#   2. extras — `chunktuner[semantic,code,ragas,mcp]`: the full test suite must pass.
-# (docling is excluded: it is heavy and caps several dependencies at older versions.)
+#   2. extras — `chunktuner[semantic,code,ragas,mcp,bm25]`: the full test suite must pass.
+# (docling is excluded: it is heavy and caps several dependencies at older versions. late is
+# excluded too: it pulls in torch; CI covers it in the docling job (locked versions) and in the
+# test-latest-late job (newest versions).)
 #
 # Usage: ./scripts/check_latest_deps.sh            # uses PYTHON=3.12 by default
 #        PYTHON=3.14 ./scripts/check_latest_deps.sh
@@ -29,7 +31,7 @@ unset OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY AZURE_OPENAI_API_KEY \
 
 key_versions() {
   uv pip list --python "$1" 2>/dev/null \
-    | grep -Ei '^(typer|click|pydantic|litellm|mcp|semchunk|tree-sitter|ragas|datasets|numpy) ' \
+    | grep -Ei '^(typer|click|pydantic|litellm|mcp|semchunk|tree-sitter|ragas|datasets|numpy|bm25s) ' \
     | tr -s ' ' | tr '\n' ' ' || true
   echo
 }
@@ -43,12 +45,12 @@ echo "   resolved: $(key_versions "$WORK/core")"
   --yes --output-format json > /dev/null
 echo "   CLI OK"
 
-echo "== [extras] chunktuner[semantic,code,ragas,mcp] + dev group, newest deps, Python $PYTHON"
+echo "== [extras] chunktuner[semantic,code,ragas,mcp,bm25] + dev group, newest deps, Python $PYTHON"
 uv venv -q --python "$PYTHON" "$WORK/extras"
-uv pip install -q --python "$WORK/extras" --refresh ".[semantic,code,ragas,mcp]" --group dev
+uv pip install -q --python "$WORK/extras" --refresh ".[semantic,code,ragas,mcp,bm25]" --group dev
 echo "   resolved: $(key_versions "$WORK/extras")"
 "$WORK/extras/bin/chunk-tune" --help > /dev/null
-CHUNKTUNER_REQUIRE_EXTRAS=semantic,code,ragas,mcp \
+CHUNKTUNER_REQUIRE_EXTRAS=semantic,code,ragas,mcp,bm25 \
   "$WORK/extras/bin/python" -m pytest -q -p no:cacheprovider
 
 echo "== latest-deps check passed"
