@@ -39,6 +39,7 @@ Structural scan using tiktoken and heuristics — **no embeddings, no external A
 | `path` | path | (required) | File or directory |
 | `--content-type` | string | auto | Override detected type |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
+| `--config` | path | none | Workspace YAML |
 
 ```bash
 chunk-tune analyze ./README.md
@@ -68,7 +69,7 @@ Dry-run **token, cost, and wall-time** estimates using `CostEstimator` — no AP
 | `path` | path | (required) | File or directory |
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated strategy names |
 | `--use-case` | string | `rag_qa` | Scoring profile label (for consistency with other commands) |
-| `--max-docs` | int | `100` | Cap documents after ingest |
+| `--max-docs` | int | `100` (or `max_docs` in YAML) | Cap documents after ingest |
 | `--config` | path | none | `.autochunk.yaml` |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
 | `--generate-dataset` | bool | false | Also estimate LLM eval-dataset generation (adds `llm_model` and `llm_dataset_tokens`; `llm_cost_usd` uses that model's pricing) |
@@ -90,14 +91,14 @@ Strategy-config combinations: ...
 
 ## `chunk-tune evaluate`
 
-Runs the evaluator for each strategy × default param grid. Uses **dummy embeddings** only when both `--embedding-model` is omitted **and** `embedding_model` in the workspace YAML (from `--config` or cwd `.autochunk.yaml`) is empty or unset; otherwise `LiteLLMEmbeddingFunction` is used and you are prompted unless `--yes`.
+Runs the evaluator for each strategy × default param grid. Uses **dummy embeddings** only when both `--embedding-model` is omitted **and** `embedding_model` in the workspace YAML (from `--config` or cwd `.autochunk.yaml`) is empty or unset; otherwise `LiteLLMEmbeddingFunction` is used and you are prompted unless `--yes`. Documents whose content type a selected strategy does not support (e.g. code with the default text strategies) are skipped with a warning naming the strategies that support them; if none remain, the command exits 1.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `path` | path | (required) | File or directory |
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated names |
-| `--use-case` | string | `rag_qa` | `rag_qa`, `search`, `summarization`, `code_assist` |
-| `--max-docs` | int | `20` | Max documents |
+| `--use-case` | string | `rag_qa` (or `use_case` in YAML) | `rag_qa`, `search`, `summarization`, `code_assist` |
+| `--max-docs` | int | `20` (or `max_docs` in YAML) | Max documents |
 | `--top-k` | int | `5` | No effect on metrics: retrieval depth is the effective k = 2000-token context budget / avg chunk tokens |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
@@ -127,14 +128,14 @@ fixed_tokens {'max_tokens': 256, ...} score=0.1234 recall=0.100 iou=0.050
 
 ## `chunk-tune recommend`
 
-Full **AutoTuner** grid over strategies and default (or filtered) param grids; prints best config. Embedding resolution matches `evaluate`: **`--embedding-model` else workspace `embedding_model`**; dummy only when the resolved value is empty.
+Full **AutoTuner** grid over strategies and default (or filtered) param grids; prints best config. Embedding resolution matches `evaluate`: **`--embedding-model` else workspace `embedding_model`**; dummy only when the resolved value is empty. Documents whose content type a selected strategy does not support (e.g. code with the default text strategies) are skipped with a warning naming the strategies that support them; if none remain, the command exits 1.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `path` | path | (required) | File or directory |
 | `--strategies` | string | `fixed_tokens,recursive_character` | Comma-separated names |
-| `--use-case` | string | `rag_qa` | Use case for scoring |
-| `--max-docs` | int | `20` | Max documents |
+| `--use-case` | string | `rag_qa` (or `use_case` in YAML) | Use case for scoring |
+| `--max-docs` | int | `20` (or `max_docs` in YAML) | Max documents |
 | `--top-k` | int | `5` | No effect on metrics (see `evaluate`) |
 | `--config` | path | none | Workspace YAML |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
@@ -143,7 +144,7 @@ Full **AutoTuner** grid over strategies and default (or filtered) param grids; p
 | `--api-key` | string | none | Same as `evaluate` |
 | `--llm-model` | string | none | Same as `evaluate` |
 | `--yes` | bool | false | Skip paid-call confirmation |
-| `--no-baseline` | bool | false | Skip fixed-token baseline run |
+| `--no-baseline` | bool | false | Skip the baseline run (`fixed_tokens` 512/0, or `code_window` 512/0 for code) |
 | `--dataset`, `--generate-dataset`, `--retrieval-scope`, `--no-cache` | | | Same as `evaluate` |
 
 ```bash
@@ -154,14 +155,14 @@ chunk-tune recommend ./samples --no-baseline
 
 ## `chunk-tune compare`
 
-Side-by-side comparison using the **first** default param set per strategy. Rich table to stdout; optional Markdown report. Embedding resolution matches `evaluate`.
+Side-by-side comparison using the **first** default param set per strategy. Rich table to stdout; optional Markdown report. Embedding resolution matches `evaluate`. Documents whose content type a selected strategy does not support (e.g. code with the default text strategies) are skipped with a warning naming the strategies that support them; if none remain, the command exits 1.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `path` | path | (required) | File or directory |
 | `--strategies` | string | **required** | Comma-separated names |
-| `--use-case` | string | `rag_qa` | Use case |
-| `--max-docs` | int | `15` | Max documents |
+| `--use-case` | string | `rag_qa` (or `use_case` in YAML) | Use case |
+| `--max-docs` | int | `15` (or `max_docs` in YAML) | Max documents |
 | `--top-k` | int | `5` | No effect on metrics (see `evaluate`) |
 | `--config` | path | none | Workspace YAML |
 | `--report` | path | none | Write Markdown comparison table |
@@ -188,9 +189,10 @@ Chunk a **single** document from a file path or inline string — no embeddings.
 | `-s`, `--strategy` | string | **required** | Registered strategy name |
 | `--params` | JSON string | `{}` | Strategy params, e.g. `'{"max_tokens":256}'` |
 | `--output-format` | choice | `table` | `table`, `json`, or `yaml` |
+| `--config` | path | none | Workspace YAML |
 
 ```bash
-chunk-tune preview ./README.md -s recursive_character --params '{"max_chunk_chars":1200}'
+chunk-tune preview ./README.md -s recursive_character --params '{"chunk_size_chars":1200}'
 ```
 
 ```text
@@ -208,21 +210,21 @@ SQLite-backed embedding and chunk caches. Subcommands:
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--config` | path | none | Workspace YAML (for `cache_dir`) |
-| `--model` | string | *(unset)* | Embedding model key; defaults to workspace `embedding_model`, else `text-embedding-3-small` |
+| `--model` | string | *(unset)* | Only embedding rows cached for this model; without it, all rows. Rows written before 0.3 (no recorded model) are counted only without `--model` |
 
 ```bash
 chunk-tune cache stats
 ```
 
 ```text
-Database: /Users/you/.cache/chunktuner/embeddings.sqlite
+Database: /Users/you/.cache/chunktuner/chunktuner_cache.sqlite
 Embeddings: ...
 Chunks: ...
 ```
 
 ### `chunk-tune cache clear`
 
-Same flags as `stats`. Clears embedding and chunk rows for the resolved database.
+Same flags as `stats`. Without `--model`, clears all embedding and chunk rows for the resolved database; with `--model`, clears only that model's embedding rows (chunk rows and rows written before 0.3 are kept).
 
 ```bash
 chunk-tune cache clear --model text-embedding-3-small

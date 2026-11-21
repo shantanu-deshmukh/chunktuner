@@ -14,7 +14,7 @@ Install the matching optional extra (see `pyproject.toml` `[project.optional-dep
 
 ## Authentication errors (embeddings)
 
-LiteLLM reads provider keys from standard environment variables (see [LiteLLM providers](https://docs.litellm.ai/docs/providers)). Examples: `OPENAI_API_KEY` for OpenAI. Pass `--embedding-model` on the CLI only when you intend to call a remote model, and confirm with `--yes` where the command requires it (`recommend`, `evaluate`).
+LiteLLM reads provider keys from standard environment variables (see [LiteLLM providers](https://docs.litellm.ai/docs/providers)). Examples: `OPENAI_API_KEY` for OpenAI. Pass `--embedding-model` on the CLI only when you intend to call a remote model, and confirm with `--yes` where the command requires it (`recommend`, `evaluate`, `compare`).
 
 ## MCP server not visible in your host
 

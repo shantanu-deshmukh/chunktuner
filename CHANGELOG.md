@@ -5,6 +5,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `paragraph_group` strategy: groups consecutive blank-line paragraphs
+  (`paragraphs_per_chunk`, `overlap_paragraphs`) under a `max_tokens` cap; a paragraph over
+  the cap is split into token windows. Default grid: 2/3/4 paragraphs × 0/1 overlap.
+- `semantic` strategy: `min_tokens` now merges chunks smaller than that into a neighbour
+  (default 0: off).
+- `analyze` and `preview` accept `--config`.
+
+### Changed
+
+- `AutoTuner.recommend()` without an explicit strategy list now also tries `paragraph_group`
+  on text, Markdown and HTML, so its recommendation can change. The CLI and MCP defaults
+  (`fixed_tokens`, `recursive_character`) are unchanged.
+- `.autochunk.yaml` keys `use_case`, `max_docs`, `max_tokens_per_run`, `strip_patterns`,
+  `tokenizer_encoding` and `log_level` are now applied (they were stored but ignored). A CLI
+  flag still wins; a key missing from the file leaves the command default. Because
+  `chunk-tune init` writes `max_docs: 100` and `max_tokens_per_run: 250000`, workspaces
+  created by `init` now evaluate up to 100 documents (was 20, or 15 for `compare`) and stop
+  when the estimated tokens exceed 250k unless `--yes` is given.
+- `code_ast` now honours `merge_small` (set in its default grid): Python files are covered
+  completely, including imports and module-level code, and small consecutive units are
+  merged up to `max_tokens`. Tuner results for Python code change accordingly; configs
+  without `merge_small` keep one chunk per top-level function/class.
+- `evaluate`, `compare`, `recommend` and the MCP evaluation tools skip documents whose
+  content type a selected strategy does not support, with a warning that names strategies
+  that do (MCP: in `warnings`), instead of crashing on mixed folders.
+- `cache stats --model` and `cache clear --model` now act only on that model's embeddings
+  (the cache records the model for new rows; rows from earlier versions are only included
+  without `--model`).
+
+### Fixed
+
+- `estimate` under-reported embedding cost 1000× for models priced in litellm's model table
+  (for example, 0.0 instead of 0.0004 USD for the test fixtures).
+- On installs without the `semantic` extra, `semantic` was still registered, so
+  `AutoTuner.recommend()` without an explicit strategy list failed; it is now registered only
+  when `semchunk` is importable.
+- `fixed_tokens` (and `late_chunking`, `structural_semantic` and `paragraph_group`, which
+  use it) crashed with "Token decode length mismatch" on text where a token splits a
+  multibyte character, such as Japanese or emoji.
+- `structural_semantic` crashed on DOCX and PPTX documents.
+- `evaluate` and `recommend` crashed on unknown strategy names; they now exit with an error
+  message. `compare` on a folder with no supported documents now says so.
+- `cache stats` under-reported the cache size (vectors are stored as float64).
+
 ## [0.2.1] - 2026-11-18
 
 ### Fixed

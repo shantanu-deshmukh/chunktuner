@@ -34,7 +34,7 @@ For how scores are combined per use case, see [Metrics reference](metrics.md). F
 - **Definition:** For each k, whether any of the top-k retrieved chunks hits a gold token (binary per query), then averaged across queries. Stored on `EvalMetrics.recall_at_k` as integer keys; `ScoreCalculator` maps the `search` profile’s `recall_at_1` weight to `recall_at_k[1]`.
 - **Range:** 0–1 per k
 - **Direction:** Higher is better
-- **Use cases:** `search` emphasizes recall at 1; `rag_qa` uses multiple k.
+- **Use cases:** `search` weights recall at 1; the other profiles do not weight `recall_at_k`.
 
 ### `mrr` (mean reciprocal rank)
 
@@ -93,6 +93,6 @@ For how scores are combined per use case, see [Metrics reference](metrics.md). F
 - **Definition:** When `Evaluator(enable_generation_metrics=True)` and RAGAS dependencies are available, `RagasBridge.compute` fills these from RAGAS `faithfulness` and `answer_relevancy` over generated answers vs retrieved contexts (see `chunktuner.eval.ragas_bridge`).
 - **Range:** typically 0–1 when present
 - **Direction:** Higher is better; **`None`** if RAGAS or the LLM path is unavailable
-- **Use cases:** `rag_qa` default weights include faithfulness when the value is non-null.
+- **Use cases:** `rag_qa` default weights include faithfulness; a `None` value scores as 0.0.
 
-When generation metrics are disabled or RAGAS fails, these fields stay `None` and `ScoreCalculator` skips them where weights apply.
+When generation metrics are disabled or RAGAS fails, these fields stay `None` and `ScoreCalculator` scores them as 0.0 where weights apply.

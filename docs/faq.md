@@ -32,7 +32,7 @@ Use `chunk-tune analyze ./my_docs`: it prints a **`heuristic_starting_strategy`*
 
 ### What is the baseline to beat?
 
-When baseline mode is enabled (default), `AutoTuner.recommend` evaluates `fixed_tokens` with `max_tokens=512` and `overlap_tokens=0` first (`src/chunktuner/tuner/auto_tuner.py`). CLI `recommend` exposes `--no-baseline` to skip that run.
+When baseline mode is enabled (default), `AutoTuner.recommend` evaluates `fixed_tokens` with `max_tokens=512` and `overlap_tokens=0` first (for code, `code_window` with `max_tokens=512` and `overlap_lines=0`) (`src/chunktuner/tuner/auto_tuner.py`). CLI `recommend` exposes `--no-baseline` to skip that run.
 
 ## MCP
 

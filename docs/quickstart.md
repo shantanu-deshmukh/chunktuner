@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python **3.10+**
+- Python **3.11+**
 - [uv](https://docs.astral.sh/uv/) or pip
 
 Optional: API keys for your embedding provider (e.g. `OPENAI_API_KEY`) when you run real evaluations instead of dummy embeddings.
@@ -80,7 +80,9 @@ tuner = AutoTuner(
     evaluator=evaluator,
     scorer=scorer,
 )
-result = tuner.recommend(docs, use_case="rag_qa")
+result = tuner.recommend(
+    docs, use_case="rag_qa", strategies=["fixed_tokens", "recursive_character"]
+)
 print(result.best.config)
 ```
 

@@ -28,7 +28,7 @@ pip install 'chunktuner[mcp]'
 
 - **`CHUNK_TUNER_BASE_DIR`**: every `path` argument to tools must resolve under this directory (security boundary).
 - **`CHUNKTUNER_API_BASE`** / **`CHUNKTUNER_API_KEY`**: optional OpenAI-compatible endpoint and key for LiteLLM when tools pass an `embedding_model` (LM Studio, Ollama, etc.). Do not put secrets in MCP tool arguments.
-- **`CHUNKTUNER_LLM_MODEL`**: LiteLLM model id passed to the evaluator as `llm_answer_model` for MCP `evaluate_chunking` / `recommend_config` (dataset generation, agentic, generation metrics when enabled, etc.); defaults to `gpt-4o-mini` when unset (see `chunktuner.config.DEFAULT_LLM_MODEL`). It applies regardless of whether an `embedding_model` is passed to the tool.
+- **`CHUNKTUNER_LLM_MODEL`**: LiteLLM model id passed to the evaluator as `llm_answer_model` for MCP `evaluate_chunking` / `recommend_config` (dataset generation, generation metrics when enabled, etc.); defaults to `gpt-4o-mini` when unset (see `chunktuner.config.DEFAULT_LLM_MODEL`). It applies regardless of whether an `embedding_model` is passed to the tool.
 - **`CHUNKTUNER_CACHE_DIR`**: used by the library helper `chunktuner.config.default_cache_dir`. MCP tools cache embeddings and generated datasets in the default workspace `cache_dir` (`~/.cache/chunktuner`), which is the same location `chunk-tune cache stats|clear` uses when no workspace config is given.
 - **Entry point**: `chunk-tune-mcp` → `chunktuner.mcp.server:run` (stdio JSON-RPC on stdout; **never** `print()` in MCP code).
 
@@ -80,7 +80,7 @@ Use this when you want REST clients; MCP hosts talk to `chunk-tune-mcp` only.
 | `retrieval_scope` | `document` | `document` or `corpus`: which ranking feeds the score's rank metrics |
 | `use_cache` | `true` | SQLite embedding cache for real embedding models |
 
-Responses (other than dry runs) include a `warnings` list. With neither `dataset_path` nor `generate_dataset`, a placeholder dataset is used (one query per document, whose answer is the first 200 characters), and `warnings` says so. `evaluate_chunking` also reports `dataset_summary.source` (`trivial`, `user_provided` or `llm_generated`).
+Responses (other than dry runs) include a `warnings` list. With neither `dataset_path` nor `generate_dataset`, a placeholder dataset is used (one query per document, whose answer is the first 200 characters), and `warnings` says so. Documents whose content type a selected strategy does not support are skipped and reported in `warnings` (also on `evaluate_chunking` dry runs); if none remain, the tool returns an error naming strategies that support them. `evaluate_chunking` also reports `dataset_summary.source` (`trivial`, `user_provided` or `llm_generated`).
 
 ## Resources & prompts
 

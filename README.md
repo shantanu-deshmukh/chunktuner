@@ -25,7 +25,7 @@ flowchart TD
         Chunk["Chunk document"] --> Embed["Embed chunks<br/>and queries"] --> Score["Score retrieval<br/>recall, MRR, NDCG"]
     end
 
-    Tune --> Rank["Rank all configs<br/>against baseline"] --> Best(["Recommended config<br/>.autochunk.yaml"])
+    Tune --> Rank["Rank all configs<br/>against baseline"] --> Best(["Recommended config<br/>printed"])
 ```
 
 ---
@@ -97,7 +97,9 @@ tuner = AutoTuner(
     evaluator=Evaluator(embedding_fn),
     scorer=ScoreCalculator(use_case="rag_qa"),
 )
-result = tuner.recommend(docs, use_case="rag_qa")
+result = tuner.recommend(
+    docs, use_case="rag_qa", strategies=["fixed_tokens", "recursive_character"]
+)
 print(result.best.config)
 ```
 
@@ -105,7 +107,7 @@ print(result.best.config)
 
 ## Example output
 
-After running `recommend`, you get a ranked table with the winning config and how much it beats the baseline:
+The [financial example benchmark](examples/financial_analysis/README.md) prints a ranked table with the winning config and how much it beats the baseline (`chunk-tune recommend` prints the best configuration):
 
 ```
   Rank   Strategy              Params                  Score   Recall   MRR    IOU   AvgTok
@@ -139,13 +141,14 @@ uv run python run_benchmark.py --fixture --num-transcripts 2
 | --------------------- | ------------------------------------- |
 | `fixed_tokens`        | Baseline; uniform token windows       |
 | `recursive_character` | General prose and documentation       |
+| `paragraph_group`     | Prose with clear paragraphs; groups of whole paragraphs |
 | `semantic`            | Token-budget recursive splits (semchunk; no embeddings) |
 | `markdown_semantic`   | Structured Markdown docs              |
 | `pdf_structural`      | PDFs with layout regions and tables   |
 | `structural_semantic` | PDF/DOCX with mixed layout and text   |
 | `late_chunking`       | Fixed-token fallback; true late chunking not implemented (explicit only) |
 | `agentic`             | High-value narrative documents        |
-| `code_ast`            | Code repos (Python, JavaScript)       |
+| `code_ast`            | Code repos (Python; other languages fall back to line windows) |
 | `code_window`         | Code baseline (sliding window)        |
 
 ---

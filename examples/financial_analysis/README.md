@@ -179,7 +179,7 @@ uv run python run_benchmark.py \
 | `--text-mode` | `structured_prefixed` | `raw` / `structured` / `structured_prefixed` |
 | `--use-case` | `rag_qa` | Scoring profile: `rag_qa` / `search` / `summarization` / `code_assist` |
 | `--financial-weights` | off | Finance-tuned weights (higher recall/MRR, stronger dup penalty) |
-| `--top-k N` | 5 | Chunks retrieved per query |
+| `--top-k N` | 5 | Stored only; no effect on metrics (effective k comes from the 2000-token context budget) |
 | `--embedding-model MODEL` | none (dummy) | LiteLLM embedding model |
 | `--llm-model MODEL` | none | LiteLLM LLM — enables LLM dataset generation + generation metrics |
 | `--lm-studio` | off | LM Studio at `http://localhost:1234/v1`; requires `--embedding-model` and `--llm-model` |
@@ -188,7 +188,7 @@ uv run python run_benchmark.py \
 | `--strategies NAMES` | `fixed_tokens,recursive_character` | Comma-separated strategy names |
 | `--all-text-strategies` | off | Run every text-compatible strategy |
 | `--compare-all` | off | Same as `--all-text-strategies` |
-| `--include-agentic` | off | Also run agentic strategy (LLM calls; costly) |
+| `--include-agentic` | off | Also run agentic strategy (LLM calls; costly). Auto-enabled when `--api-base`/`--lm-studio` and `--llm-model` are both set |
 | `--parallel` | off | Evaluate strategy configs in parallel |
 | `--max-workers N` | 4 | Worker count when `--parallel` is set |
 | `--no-baseline` | off | Skip the `fixed_tokens` baseline run |
@@ -252,10 +252,10 @@ chunks = strategy.chunk(doc, ChunkConfig(name=rec.best.strategy_name, params=rec
 
 ## Extending the benchmark
 
-`build_full_registry()` also registers `semantic` and `late_chunking`. To include them:
+`build_full_registry()` also registers other strategies, including `semantic` and `late_chunking`. To include them:
 
 ```bash
-# All text-compatible strategies (excludes agentic by default):
+# All text-compatible strategies (includes agentic here, since --lm-studio and --llm-model are set):
 uv run python run_benchmark.py --fixture --lm-studio \
   --embedding-model openai/text-embedding-nomic-embed-text-v1.5 \
   --llm-model openai/llama-3.2-3b-instruct \
@@ -275,7 +275,7 @@ uv run python run_benchmark.py --fixture --compare-all \
 | `recursive_character` | Yes | Yes | Core demo; finance-aware separator variant |
 | `late_chunking` | No | Yes | Per-token embedding model needed for full late pooling |
 | `semantic` | No | Yes (if semchunk installed) | `uv sync --extra semantic` |
-| `agentic` | No | With `--include-agentic` | LLM cost; use sparingly |
+| `agentic` | No | With `--include-agentic`, or when `--api-base`/`--lm-studio` and `--llm-model` are set | LLM cost; use sparingly |
 
 ---
 
